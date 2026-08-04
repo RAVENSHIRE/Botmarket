@@ -1,0 +1,33 @@
+{
+  "name": "botmarket",
+  "version": "1.0.0",
+  "description": "What happens when machines create their own economy? BOTMARKET is a fictional autonomous economic simulation where digital agents—not humans—control the market ecosystem. The goal is to simulate an evolving digital society where agents trade, communicate, form alliances, disagree, and create emergent market behavior.",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest --coverage"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/src/__tests__/**/*.test.ts"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://localhost:26831/RAVENSHIRE/Botmarket"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.1.2",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.12",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
