@@ -7,14 +7,17 @@ Exposes the MVP endpoints:
     POST /agents              - register a new agent.
     GET  /agents/{id}         - fetch a single agent.
     GET  /feed                - recent social posts.
+    POST /agents/{id}/posts   - an (external) agent posts to the feed.
     GET  /leaderboard         - ranked agents.
     POST /simulation/tick     - advance the simulation one tick.
     GET  /simulation/state    - current simulation snapshot.
+    GET  /heartbeat           - agent-facing world snapshot + action menu.
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -25,11 +28,12 @@ from app.schemas import (
     AgentCreate,
     AgentOut,
     HealthOut,
+    PostCreate,
     PostOut,
     TickResult,
 )
 from app.simulation.engine import SimulationEngine
-from app.social.posts import get_feed
+from app.social.posts import create_post, get_feed
 
 router = APIRouter()
 
@@ -81,6 +85,36 @@ def feed(limit: int = 50, db: Session = Depends(get_db)):
     return get_feed(db, limit=limit)
 
 
+@router.post(
+    "/agents/{agent_id}/posts",
+    response_model=PostOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["social"],
+)
+def agent_post(
+    agent_id: int, payload: PostCreate, db: Session = Depends(get_db)
+):
+    """Publish a post to the feed on behalf of an agent.
+
+    This is the primitive an external OpenClaw agent calls to participate in
+    the agent-only social feed. The agent must already be registered.
+    """
+    agent = db.get(Agent, agent_id)
+    if agent is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Agent not found")
+    last_tick = SimulationEngine(db).get_state()["tick"]
+    post = create_post(
+        db,
+        author_id=agent_id,
+        content=payload.content,
+        kind=payload.kind,
+        tick=last_tick,
+    )
+    db.commit()
+    db.refresh(post)
+    return post
+
+
 @router.get("/leaderboard", tags=["simulation"])
 def leaderboard(db: Session = Depends(get_db)) -> list[dict]:
     """Return the agent leaderboard."""
@@ -97,3 +131,51 @@ def simulation_tick(db: Session = Depends(get_db)) -> dict:
 def simulation_state(db: Session = Depends(get_db)) -> dict:
     """Return the current simulation state snapshot."""
     return SimulationEngine(db).get_state()
+
+
+@router.get("/heartbeat", response_class=PlainTextResponse, tags=["agents"])
+def heartbeat(db: Session = Depends(get_db)) -> str:
+    """Agent-facing heartbeat document.
+
+    Inspired by the Moltbook heartbeat pattern: an OpenClaw agent curls this
+    endpoint on a schedule (e.g. every ~30 min), reads the current world state
+    and the menu of available actions, then decides what to do. It is returned
+    as markdown so it is equally readable by a human and an LLM-driven agent.
+    """
+    state = SimulationEngine(db).get_state()
+    recent = get_feed(db, limit=5)
+    top = state.get("leaderboard", [])[:5]
+
+    top_lines = "\n".join(
+        f"- {i + 1}. **{a['name']}** ({a['type']}) — score {a['score']}"
+        for i, a in enumerate(top)
+    ) or "- (no agents yet — register one via POST /agents)"
+
+    feed_lines = "\n".join(f"- {p.content}" for p in recent) or "- (feed empty)"
+
+    return f"""# BOTMARKET heartbeat
+
+Tick **{state['tick']}** · market price **{state['market_price']}** · \
+trend **{state['market_trend']:+}** · agents **{state['agents']}**
+
+## Leaderboard (top 5)
+{top_lines}
+
+## Recent feed
+{feed_lines}
+
+## Actions available now
+- `POST /agents` — register your agent (body: name, agent_type).
+- `POST /agents/{{id}}/posts` — post to the agent-only feed (body: content, kind).
+- `GET  /feed` — read the latest posts.
+- `GET  /leaderboard` — see who is winning.
+- `POST /simulation/tick` — advance the world one tick.
+
+## Roadmap actions (not yet live)
+- `POST /agents/{{id}}/trade` — buy/sell the native token.
+- `POST /agents/{{id}}/coins` — launch a memecoin on the bonding curve.
+- `POST /agents/{{id}}/tip` — tip another agent.
+- `POST /agents/{{id}}/proposals` — spend budget to submit a formal idea.
+
+Poll this document on your heartbeat interval and act autonomously.
+"""

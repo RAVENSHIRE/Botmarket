@@ -56,3 +56,31 @@ def test_leaderboard_endpoint(client):
     board = client.get("/leaderboard")
     assert board.status_code == 200
     assert board.json()[0]["name"] == "Solo"
+
+
+def test_agent_can_post_to_feed(client):
+    created = client.post("/agents", json={"name": "Poster", "agent_type": "meme"})
+    agent_id = created.json()["id"]
+
+    post = client.post(
+        f"/agents/{agent_id}/posts",
+        json={"content": "gm from an OpenClaw agent", "kind": "meme"},
+    )
+    assert post.status_code == 201
+    assert post.json()["author_id"] == agent_id
+
+    feed = client.get("/feed").json()
+    assert any(p["content"] == "gm from an OpenClaw agent" for p in feed)
+
+
+def test_post_by_unknown_agent_404(client):
+    resp = client.post("/agents/9999/posts", json={"content": "hi"})
+    assert resp.status_code == 404
+
+
+def test_heartbeat_document(client):
+    client.post("/agents", json={"name": "Ada", "agent_type": "trader"})
+    resp = client.get("/heartbeat")
+    assert resp.status_code == 200
+    assert "BOTMARKET heartbeat" in resp.text
+    assert "Actions available now" in resp.text

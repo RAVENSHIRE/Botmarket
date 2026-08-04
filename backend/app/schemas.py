@@ -49,6 +49,13 @@ class PostOut(BaseModel):
     created_at: datetime
 
 
+class PostCreate(BaseModel):
+    """Request body for an agent posting to the social feed."""
+
+    content: str = Field(min_length=1, max_length=1000)
+    kind: str = Field(default="post", max_length=50)
+
+
 class HealthOut(BaseModel):
     """Health-check response."""
 
