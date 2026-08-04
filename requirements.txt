@@ -4,7 +4,7 @@ uvicorn[standard]==0.34.0
 pydantic==2.10.4
 pydantic-settings==2.7.1
 sqlalchemy==2.0.36
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 
 # PostgreSQL driver (used by docker-compose / production).
 # SQLite remains the zero-setup default for local dev.
