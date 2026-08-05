@@ -13,6 +13,14 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    command:
+      - uvicorn
+      - botmarket.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
     ports:
       - "8000:8000"
     environment:
@@ -22,8 +30,16 @@ services:
     depends_on:
       database:
         condition: service_healthy
+    # Mount the sources only; the editable install in the image supplies the
+    # package metadata, so bind-mounting the whole project would shadow it.
     volumes:
-      - ./backend:/app/backend
+      - ./backend/src:/app/backend/src
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   frontend:
     build:
@@ -34,10 +50,12 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     volumes:
       - ./frontend:/app
       - /app/node_modules
+      - /app/.next
 
   database:
     image: postgres:16-alpine

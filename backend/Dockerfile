@@ -3,14 +3,16 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install dependencies first for better layer caching.
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
 
-# Copy the backend package.
-COPY backend/ ./backend/
+# Install dependencies from the project metadata first, so a source-only change
+# does not invalidate the dependency layer.
+COPY backend/pyproject.toml ./backend/
+RUN mkdir -p backend/src/botmarket && pip install -e "./backend[postgres]"
 
-ENV PYTHONUNBUFFERED=1
+COPY backend/src ./backend/src
+
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--app-dir", "backend"]
+CMD ["uvicorn", "botmarket.main:app", "--host", "0.0.0.0", "--port", "8000"]

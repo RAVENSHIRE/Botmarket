@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "botmarket"
+version = "1.0.0"
+description = "BOTMARKET — an autonomous agent economy with live exchange execution."
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+dependencies = [
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "pydantic==2.10.4",
+    "pydantic-settings==2.7.1",
+    "sqlalchemy==2.0.36",
+    "python-dotenv==1.0.1",
+    # Encrypts venue API credentials at rest. Core, not optional: the
+    # credential store refuses to persist a secret it cannot encrypt.
+    "cryptography==44.0.0",
+]
+
+[project.optional-dependencies]
+# PostgreSQL driver — used by docker compose and production deployments.
+# SQLite remains the zero-setup default for local development.
+postgres = ["psycopg[binary]==3.2.3"]
+# Live exchange execution. Without this extra the Hyperliquid venue refuses to
+# construct and Botmarket runs paper-only, which is the safe default.
+live = [
+    "hyperliquid-python-sdk==0.24.0",
+    "eth-account==0.13.7",
+]
+dev = [
+    "pytest==8.3.4",
+    "httpx==0.28.1",
+    "ruff==0.8.4",
+]
+
+[project.scripts]
+botmarket = "botmarket.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
