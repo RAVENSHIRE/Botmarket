@@ -333,3 +333,191 @@ class TickResult(BaseModel):
     actions: list[TickAction]
     proposals_resolved: list[ResolvedProposal]
     leaderboard: list[LeaderRow]
+
+
+# --- Live trading --------------------------------------------------------
+
+
+class VenueInfo(BaseModel):
+    """A venue this deployment can use."""
+
+    name: str
+    environments: list[str]
+    requires_credentials: bool
+    available: bool
+    mainnet_allowed: bool
+
+
+class RiskLimitsOut(BaseModel):
+    """The risk envelope currently in force."""
+
+    trading_enabled: bool
+    max_leverage: int
+    min_order_value: float
+    max_order_value: float
+    max_position_value: float
+    max_gross_notional: float
+    max_daily_loss: float
+    allow_mainnet: bool
+
+
+class VenueAccountCreate(BaseModel):
+    """Request body for linking an agent to a venue.
+
+    ``secret`` is write-only: it is encrypted on arrival and no endpoint ever
+    returns it.
+    """
+
+    venue: Literal["paper", "hyperliquid"]
+    environment: Literal["paper", "testnet", "mainnet"]
+    label: str = Field(default="", max_length=120)
+    wallet_address: str | None = Field(default=None, max_length=120)
+    secret: str | None = Field(
+        default=None,
+        max_length=512,
+        description="API secret or wallet private key. Stored encrypted, never returned.",
+    )
+
+
+class PositionOut(BaseModel):
+    """One open position."""
+
+    symbol: str
+    side: str
+    size: float
+    entry_price: float
+    mark_price: float
+    leverage: int
+    unrealised_pnl: float
+    liquidation_price: float | None = None
+
+
+class VenueAccountOut(BaseModel):
+    """A venue account, with no credential material in it."""
+
+    id: int
+    agent_id: int
+    venue: str
+    environment: str
+    label: str
+    wallet_address: str | None
+    has_credentials: bool
+    active: bool
+    realised_loss_today: float
+    is_real_money: bool
+    equity: float | None = None
+    available: float | None = None
+    gross_notional: float | None = None
+    positions: list[PositionOut] = Field(default_factory=list)
+
+
+class VenueOrderCreate(BaseModel):
+    """Request body for placing a live order."""
+
+    symbol: str = Field(min_length=1, max_length=40)
+    side: Literal["buy", "sell"]
+    size: float = Field(gt=0)
+    order_type: Literal["market", "limit"] = "market"
+    limit_price: float | None = Field(default=None, gt=0)
+    leverage: int = Field(default=1, ge=1, le=50)
+    reduce_only: bool = False
+    confirm_real_money: bool = Field(
+        default=False,
+        description="Required for mainnet orders. Configuration alone is never consent.",
+    )
+
+
+class VenueOrderOut(BaseModel):
+    """The outcome of an order attempt."""
+
+    account_id: int
+    accepted: bool
+    symbol: str
+    side: str
+    filled_size: float
+    average_price: float
+    notional: float
+    environment: str
+    order_id: str | None
+    reason: str | None
+    is_real_money: bool
+
+
+class VenueOrderRow(BaseModel):
+    """One row of the order audit trail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    symbol: str
+    side: str
+    size: float
+    price: float
+    leverage: int
+    reduce_only: bool
+    environment: str
+    status: str
+    reason: str | None
+    venue_order_id: str | None
+    created_at: datetime
+
+
+# --- Factors -------------------------------------------------------------
+
+
+class FactorInfo(BaseModel):
+    """A registered factor."""
+
+    name: str
+    category: str
+    description: str
+    lookback: int
+
+
+class FactorScoreOut(BaseModel):
+    """How well a factor predicted forward returns."""
+
+    name: str
+    horizon: int
+    samples: int
+    ic: float
+    rank_ic: float
+    icir: float
+    hit_rate: float
+    significant: bool
+
+
+class FactorEvaluation(BaseModel):
+    """Every factor scored for one symbol, plus the blended signal."""
+
+    symbol: str
+    venue: str
+    environment: str
+    interval: str
+    horizon: int
+    candles: int
+    last_price: float
+    values: dict[str, float | None]
+    scores: list[FactorScoreOut]
+    signal: float
+
+
+class FactorDetail(BaseModel):
+    """One factor's current value and score for a symbol."""
+
+    symbol: str
+    factor: FactorInfo
+    value: float | None
+    score: FactorScoreOut
+
+
+class MarketRow(BaseModel):
+    """A compact per-symbol signal row."""
+
+    symbol: str
+    price: float | None = None
+    signal: float | None = None
+    best_factor: str | None = None
+    best_ic: float | None = None
+    significant_factors: int | None = None
+    error: str | None = None

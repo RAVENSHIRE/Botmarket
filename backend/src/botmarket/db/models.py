@@ -12,6 +12,12 @@ Core entities of the simulated agent economy:
 * :class:`Proposal`    - a governance proposal funded from an agent's wallet.
 * :class:`Vote`        - a token-weighted vote cast on a proposal.
 
+Live trading adds three more:
+
+* :class:`VenueAccount`  - an agent's link to a trading venue.
+* :class:`VenuePosition` - a paper position (live positions live on the exchange).
+* :class:`VenueOrder`    - the audit trail of every order, accepted or refused.
+
 Models use SQLAlchemy 2.0 typed mappings and are PostgreSQL-compatible.
 """
 
@@ -222,3 +228,105 @@ class Vote(Base):
 
     proposal: Mapped[Proposal] = relationship(back_populates="votes")
     agent: Mapped[Agent] = relationship()
+
+
+class VenueAccount(Base):
+    """An agent's link to a trading venue.
+
+    One agent may hold several accounts — typically a paper account and a
+    testnet account — but only one per (venue, environment) pair, so "trade on
+    Hyperliquid testnet" always resolves to exactly one account.
+
+    ``encrypted_secret`` holds the venue API secret or wallet private key,
+    encrypted at rest. It is written by the credential service and never leaves
+    the backend: no API response, log line or exception carries it.
+    """
+
+    __tablename__ = "venue_accounts"
+    __table_args__ = (
+        UniqueConstraint("agent_id", "venue", "environment", name="uq_venue_account"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
+    # "paper" or "hyperliquid".
+    venue: Mapped[str] = mapped_column(String(40), index=True)
+    # "paper", "testnet" or "mainnet".
+    environment: Mapped[str] = mapped_column(String(20), index=True)
+    label: Mapped[str] = mapped_column(String(120), default="")
+    # Public address; safe to display.
+    wallet_address: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    encrypted_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Starting and current cash for a paper account; unused when live.
+    paper_balance: Mapped[float] = mapped_column(default=10_000.0)
+    # Per-account kill switch, independent of the global one.
+    active: Mapped[bool] = mapped_column(default=True)
+    realised_pnl_today: Mapped[float] = mapped_column(default=0.0)
+    pnl_day: Mapped[str] = mapped_column(String(10), default="")
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+    agent: Mapped[Agent] = relationship()
+    positions: Mapped[list[VenuePosition]] = relationship(
+        back_populates="account", cascade="all, delete-orphan"
+    )
+    orders: Mapped[list[VenueOrder]] = relationship(
+        back_populates="account", cascade="all, delete-orphan"
+    )
+
+    @property
+    def has_credentials(self) -> bool:
+        """Whether a secret is on file, without revealing anything about it."""
+        return bool(self.encrypted_secret)
+
+
+class VenuePosition(Base):
+    """An open paper position.
+
+    Live positions are not mirrored here: the exchange is authoritative for
+    those, and a local copy would only ever be a stale second opinion.
+    """
+
+    __tablename__ = "venue_positions"
+    __table_args__ = (
+        UniqueConstraint("account_id", "symbol", name="uq_venue_position"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("venue_accounts.id"), index=True)
+    symbol: Mapped[str] = mapped_column(String(40), index=True)
+    side: Mapped[str] = mapped_column(String(8))
+    size: Mapped[float] = mapped_column(default=0.0)
+    entry_price: Mapped[float] = mapped_column(default=0.0)
+    leverage: Mapped[int] = mapped_column(default=1)
+    opened_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+    account: Mapped[VenueAccount] = relationship(back_populates="positions")
+
+
+class VenueOrder(Base):
+    """Audit trail of an order attempt.
+
+    Refused orders are recorded too, with the rule that stopped them. When an
+    autonomous agent is trading real money, "why did nothing happen?" needs an
+    answer, and a risk refusal that left no trace cannot give one.
+    """
+
+    __tablename__ = "venue_orders"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("venue_accounts.id"), index=True)
+    symbol: Mapped[str] = mapped_column(String(40), index=True)
+    side: Mapped[str] = mapped_column(String(8))
+    size: Mapped[float] = mapped_column(default=0.0)
+    price: Mapped[float] = mapped_column(default=0.0)
+    leverage: Mapped[int] = mapped_column(default=1)
+    reduce_only: Mapped[bool] = mapped_column(default=False)
+    environment: Mapped[str] = mapped_column(String(20), index=True)
+    # "filled", "rejected" or "refused" (refused = stopped by a risk rule).
+    status: Mapped[str] = mapped_column(String(20), index=True)
+    # Risk rule or venue reason when the order did not fill.
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    venue_order_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+    account: Mapped[VenueAccount] = relationship(back_populates="orders")

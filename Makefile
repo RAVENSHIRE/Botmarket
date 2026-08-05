@@ -11,7 +11,8 @@ PIP     := $(VENV)/bin/pip
 BIN     := $(VENV)/bin
 
 .PHONY: help install install-backend install-frontend dev dev-backend dev-frontend \
-        test test-backend test-frontend lint fmt seed tick demo reset docker clean
+        test test-backend test-frontend lint fmt seed tick demo reset keygen \
+        install-live docker clean
 
 help: ## Show the available targets.
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -59,6 +60,12 @@ tick: ## Advance the simulation one tick.
 
 reset: ## Drop every table and start over.
 	$(BIN)/botmarket reset
+
+keygen: ## Print a VENUE_ENCRYPTION_KEY for live trading.
+	$(BIN)/botmarket keygen
+
+install-live: ## Install the optional exchange SDKs for live trading.
+	$(PIP) install -q -e "backend[postgres,dev,live]"
 
 demo: reset seed ## Reset, seed, and run 20 ticks.
 	$(BIN)/botmarket tick --count 20

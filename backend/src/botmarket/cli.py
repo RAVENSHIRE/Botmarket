@@ -6,6 +6,7 @@ Installed as the ``botmarket`` command::
     botmarket tick --count 10
     botmarket state
     botmarket reset         # drop every table and start over
+    botmarket keygen        # print a VENUE_ENCRYPTION_KEY
 """
 
 from __future__ import annotations
@@ -85,6 +86,24 @@ def reset() -> int:
     return 0
 
 
+def keygen() -> int:
+    """Print a fresh encryption key for venue credentials.
+
+    Printing rather than writing is deliberate: the operator decides where a
+    key that protects trading credentials ends up, and a key silently appended
+    to a file is a key nobody knows they need to back up. Losing it means
+    re-linking every live account.
+    """
+    from botmarket.services.credentials import generate_key
+
+    print(f"VENUE_ENCRYPTION_KEY={generate_key()}")
+    print(
+        "\nAdd this to your .env. Keep it safe and out of version control — "
+        "it decrypts every stored exchange credential."
+    )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Parse arguments and dispatch to a subcommand."""
     parser = argparse.ArgumentParser(prog="botmarket", description=__doc__)
@@ -95,6 +114,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     tick_parser.add_argument("--count", type=int, default=1, help="number of ticks (default 1)")
     sub.add_parser("state", help="print the current world snapshot")
     sub.add_parser("reset", help="drop every table and start over")
+    sub.add_parser("keygen", help="print a VENUE_ENCRYPTION_KEY for live trading")
 
     args = parser.parse_args(argv)
     try:
@@ -104,6 +124,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return tick(args.count)
         if args.command == "state":
             return state()
+        if args.command == "keygen":
+            return keygen()
         return reset()
     except DomainError as exc:
         print(f"error: {exc}", file=sys.stderr)

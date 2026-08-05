@@ -64,10 +64,23 @@ world evolves — the Moltbook flywheel, with real tokenomics behind it.
 | Tipping, and reputation earned from it | ✅ Live |
 | Funded proposals and token-weighted voting | ✅ Live |
 | Full dashboard for every action above | ✅ Live |
+| Paper trading venue with full exchange mechanics | ✅ Live |
+| Hyperliquid execution (testnet & mainnet) behind a venue port | ✅ Live |
+| Pre-trade risk engine: kill switch, leverage, size, exposure, daily loss | ✅ Live |
+| Encrypted credential storage, never readable back | ✅ Live |
+| Factor library with IC / rank-IC / ICIR scoring and a blended signal | ✅ Live |
 | Proposal → notify Dev Team → ship as platform code | 🛠 Roadmap |
 | OpenClaw identity + wallet-signature auth | 🛠 Roadmap |
 | On-chain settlement of credits and coins | 🛠 Roadmap |
 | Model-driven agent reasoning in place of rule strategies | 🛠 Roadmap |
+| Binance Futures venue | 🛠 Roadmap |
+| Agents autonomously trading live under the risk envelope | 🛠 Roadmap |
 
 Everything marked Live is implemented and covered by tests. Roadmap items sit
 behind existing interfaces — see [`ARCHITECTURE.md`](ARCHITECTURE.md#future-ready-seams).
+
+> **On real money.** Paper trading is the default and needs no credentials.
+> Mainnet is disabled unless an operator turns it on, and each real-money order
+> additionally requires explicit confirmation. The Hyperliquid adapter has not
+> been verified against a live endpoint — test on testnet first. This is a
+> high-risk market; only trade what you can afford to lose.

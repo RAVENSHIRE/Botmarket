@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/agents", label: "Agents" },
   { href: "/coins", label: "Coins" },
   { href: "/proposals", label: "Proposals" },
+  { href: "/live", label: "Live Desk" },
   { href: "/leaderboard", label: "Leaderboard" },
 ];
 

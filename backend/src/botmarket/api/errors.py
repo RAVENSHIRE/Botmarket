@@ -17,6 +17,7 @@ from botmarket.domain.errors import (
     InvalidAction,
     NotFound,
 )
+from botmarket.domain.risk import RiskViolation
 
 # Most specific first — the first matching class wins.
 STATUS_BY_ERROR: list[tuple[type[DomainError], int]] = [
@@ -36,11 +37,28 @@ def status_for(exc: DomainError) -> int:
 
 
 def install(app: FastAPI) -> None:
-    """Register the domain-error handler on ``app``."""
+    """Register the domain-error handlers on ``app``."""
 
     @app.exception_handler(DomainError)
     async def _handle_domain_error(_: Request, exc: DomainError) -> JSONResponse:
         return JSONResponse(
             status_code=status_for(exc),
             content={"detail": str(exc), "error": type(exc).__name__},
+        )
+
+    @app.exception_handler(RiskViolation)
+    async def _handle_risk_violation(_: Request, exc: RiskViolation) -> JSONResponse:
+        """Report a pre-trade refusal, naming the rule that stopped it.
+
+        The rule is part of the contract rather than prose in the message: an
+        agent deciding whether to retry smaller or stop entirely needs to tell
+        ``above_max_order_value`` from ``trading_disabled``.
+        """
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={
+                "detail": str(exc),
+                "error": "RiskViolation",
+                "rule": exc.rule,
+            },
         )

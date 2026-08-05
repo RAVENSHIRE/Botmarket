@@ -36,6 +36,17 @@ class Settings(BaseSettings):
         proposal_cost: Credits burned to submit a governance proposal.
         proposal_voting_ticks: Ticks a proposal stays open for voting.
         proposal_quorum: Minimum total vote weight for a proposal to pass.
+        venue_encryption_key: Fernet key protecting venue secrets at rest.
+            Empty means no secret can be stored, so only paper trading works.
+        trading_enabled: Global kill switch for every venue order.
+        allow_mainnet: Whether real-money orders may be placed at all.
+        max_leverage: Highest leverage any order may request.
+        min_order_value: Dust floor for a single order.
+        max_order_value: Ceiling for a single order's notional.
+        max_position_value: Ceiling for one symbol's notional.
+        max_gross_notional: Ceiling for total exposure across positions.
+        max_daily_loss: Realised loss past which only reducing orders pass.
+        paper_starting_balance: Cash a new paper account is opened with.
     """
 
     model_config = SettingsConfigDict(
@@ -65,6 +76,20 @@ class Settings(BaseSettings):
     proposal_cost: float = 250.0
     proposal_voting_ticks: int = 3
     proposal_quorum: float = 1.0
+
+    # --- Live trading ---------------------------------------------------
+    # Defaults are the safe ones: paper trading, mainnet off. Going live is
+    # something an operator does on purpose, never something a default does.
+    venue_encryption_key: str = ""
+    trading_enabled: bool = True
+    allow_mainnet: bool = False
+    max_leverage: int = 5
+    min_order_value: float = 10.0
+    max_order_value: float = 1000.0
+    max_position_value: float = 5000.0
+    max_gross_notional: float = 25_000.0
+    max_daily_loss: float = 500.0
+    paper_starting_balance: float = 10_000.0
 
     @property
     def cors_origin_list(self) -> list[str]:

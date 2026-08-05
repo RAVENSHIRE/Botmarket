@@ -284,3 +284,177 @@ export const api = {
   state: () => request<SimulationState>("/simulation/state"),
   tick: () => post<TickResult>("/simulation/tick"),
 };
+
+// --- Live trading --------------------------------------------------------
+
+export interface VenueInfo {
+  name: string;
+  environments: string[];
+  requires_credentials: boolean;
+  available: boolean;
+  mainnet_allowed: boolean;
+}
+
+export interface RiskLimits {
+  trading_enabled: boolean;
+  max_leverage: number;
+  min_order_value: number;
+  max_order_value: number;
+  max_position_value: number;
+  max_gross_notional: number;
+  max_daily_loss: number;
+  allow_mainnet: boolean;
+}
+
+export interface VenuePosition {
+  symbol: string;
+  side: string;
+  size: number;
+  entry_price: number;
+  mark_price: number;
+  leverage: number;
+  unrealised_pnl: number;
+  liquidation_price: number | null;
+}
+
+export interface VenueAccount {
+  id: number;
+  agent_id: number;
+  venue: string;
+  environment: string;
+  label: string;
+  wallet_address: string | null;
+  has_credentials: boolean;
+  active: boolean;
+  realised_loss_today: number;
+  is_real_money: boolean;
+  equity?: number | null;
+  available?: number | null;
+  gross_notional?: number | null;
+  positions?: VenuePosition[];
+}
+
+export interface VenueOrderResult {
+  account_id: number;
+  accepted: boolean;
+  symbol: string;
+  side: string;
+  filled_size: number;
+  average_price: number;
+  notional: number;
+  environment: string;
+  order_id: string | null;
+  reason: string | null;
+  is_real_money: boolean;
+}
+
+export interface VenueOrderRow {
+  id: number;
+  symbol: string;
+  side: string;
+  size: number;
+  price: number;
+  leverage: number;
+  reduce_only: boolean;
+  environment: string;
+  status: string;
+  reason: string | null;
+  venue_order_id: string | null;
+  created_at: string;
+}
+
+// --- Factors -------------------------------------------------------------
+
+export interface FactorInfo {
+  name: string;
+  category: string;
+  description: string;
+  lookback: number;
+}
+
+export interface FactorScore {
+  name: string;
+  horizon: number;
+  samples: number;
+  ic: number;
+  rank_ic: number;
+  icir: number;
+  hit_rate: number;
+  significant: boolean;
+}
+
+export interface FactorEvaluation {
+  symbol: string;
+  venue: string;
+  environment: string;
+  interval: string;
+  horizon: number;
+  candles: number;
+  last_price: number;
+  values: Record<string, number | null>;
+  scores: FactorScore[];
+  signal: number;
+}
+
+export interface MarketRow {
+  symbol: string;
+  price?: number | null;
+  signal?: number | null;
+  best_factor?: string | null;
+  best_ic?: number | null;
+  significant_factors?: number | null;
+  error?: string | null;
+}
+
+export const live = {
+  venues: () => request<VenueInfo[]>("/venues"),
+  limits: () => request<RiskLimits>("/venues/limits"),
+  accounts: (agentId: number) =>
+    request<VenueAccount[]>(`/agents/${agentId}/venues`),
+  account: (accountId: number) =>
+    request<VenueAccount>(`/venue-accounts/${accountId}`),
+  link: (
+    agentId: number,
+    body: {
+      venue: string;
+      environment: string;
+      label?: string;
+      wallet_address?: string;
+      secret?: string;
+    },
+  ) => post<VenueAccount>(`/agents/${agentId}/venues`, body),
+  unlink: (accountId: number) =>
+    request<void>(`/venue-accounts/${accountId}`, { method: "DELETE" }),
+  setActive: (accountId: number, active: boolean) =>
+    post<VenueAccount>(`/venue-accounts/${accountId}/active?active=${active}`),
+  order: (
+    accountId: number,
+    body: {
+      symbol: string;
+      side: "buy" | "sell";
+      size: number;
+      order_type?: "market" | "limit";
+      limit_price?: number;
+      leverage?: number;
+      reduce_only?: boolean;
+      confirm_real_money?: boolean;
+    },
+  ) => post<VenueOrderResult>(`/venue-accounts/${accountId}/orders`, body),
+  close: (accountId: number, symbol: string) =>
+    post<VenueOrderResult>(`/venue-accounts/${accountId}/close/${symbol}`),
+  orders: (accountId: number) =>
+    request<VenueOrderRow[]>(`/venue-accounts/${accountId}/orders`),
+};
+
+export const factors = {
+  library: () => request<FactorInfo[]>("/factors"),
+  market: (symbols: string[], venue = "paper", environment = "paper") =>
+    request<MarketRow[]>(
+      `/factors/market?symbols=${encodeURIComponent(symbols.join(","))}` +
+        `&venue=${venue}&environment=${environment}`,
+    ),
+  evaluate: (symbol: string, venue = "paper", environment = "paper") =>
+    request<FactorEvaluation>(
+      `/factors/${encodeURIComponent(symbol)}?venue=${venue}&environment=${environment}`,
+    ),
+};

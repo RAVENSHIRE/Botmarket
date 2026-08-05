@@ -89,6 +89,7 @@ export function ActionForm({
   submitLabel,
   onSubmit,
   secondary,
+  onSettled,
   disabled,
   disabledReason,
 }: {
@@ -98,6 +99,14 @@ export function ActionForm({
   onSubmit: () => Promise<string | void>;
   /** An optional second action over the same fields (e.g. sell beside buy). */
   secondary?: { label: string; onSubmit: () => Promise<string | void> };
+  /**
+   * Runs after every attempt, successful or not.
+   *
+   * A refused action still changes what the server has to say — a rejected
+   * order leaves an audit row explaining why — so the view has to refresh on
+   * failure too, not only on success.
+   */
+  onSettled?: () => void;
   disabled?: boolean;
   disabledReason?: string;
 }) {
@@ -119,6 +128,7 @@ export function ActionForm({
       );
     } finally {
       setBusy(false);
+      onSettled?.();
     }
   };
 
