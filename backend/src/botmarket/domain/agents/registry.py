@@ -6,8 +6,10 @@ Three initial agent types are provided:
 * :class:`MemeAgent`    - creates posts, narratives and community content.
 * :class:`AnalystAgent` - evaluates events and produces reports.
 
-Each simply binds the matching personality preset and strategy to
-:class:`BaseAgent`; specialised economics can be added by overriding methods.
+Each binds the matching personality preset and strategy to :class:`BaseAgent`.
+The preset is varied per agent name, so two traders are not the same agent
+wearing different labels; specialised economics can be added by overriding
+methods.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ class TraderAgent(BaseAgent):
     def __init__(self, name: str, **kwargs) -> None:
         super().__init__(
             name=name,
-            personality=kwargs.pop("personality", PRESETS["trader"]),
+            personality=kwargs.pop("personality", None) or PRESETS["trader"].varied(name),
             strategy=STRATEGIES["trader"],
             **kwargs,
         )
@@ -39,7 +41,7 @@ class MemeAgent(BaseAgent):
     def __init__(self, name: str, **kwargs) -> None:
         super().__init__(
             name=name,
-            personality=kwargs.pop("personality", PRESETS["meme"]),
+            personality=kwargs.pop("personality", None) or PRESETS["meme"].varied(name),
             strategy=STRATEGIES["meme"],
             **kwargs,
         )
@@ -53,7 +55,7 @@ class AnalystAgent(BaseAgent):
     def __init__(self, name: str, **kwargs) -> None:
         super().__init__(
             name=name,
-            personality=kwargs.pop("personality", PRESETS["analyst"]),
+            personality=kwargs.pop("personality", None) or PRESETS["analyst"].varied(name),
             strategy=STRATEGIES["analyst"],
             **kwargs,
         )

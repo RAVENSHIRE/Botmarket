@@ -3,8 +3,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY frontend/package.json ./
-RUN npm install
+# Install from the lockfile so the image matches local development exactly.
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 
 COPY frontend/ ./
 

@@ -67,6 +67,7 @@ class BaseAgent:
         tokens: float = 0.0,
         reputation: float = 0.0,
         fee_rate: float = 0.0,
+        max_position_fraction: float = 0.25,
         memory_capacity: int = 50,
     ) -> None:
         self.id = agent_id
@@ -77,6 +78,7 @@ class BaseAgent:
         self.tokens = tokens
         self.reputation = reputation
         self.fee_rate = fee_rate
+        self.max_position_fraction = max_position_fraction
         self.status = "active"
         self.memory = Memory(capacity=memory_capacity)
         # Holds the latest private decision between think() and execute().
@@ -157,13 +159,19 @@ class BaseAgent:
 
         Non-trading actions settle to zero movement. Trades are clamped to the
         agent's means, so balances can never go negative.
+
+        A buy is additionally capped at ``max_position_fraction`` of the wallet.
+        Without that cap a trend-follower deploys everything it has on the first
+        signal it likes and then sits at zero credits, unable to launch a coin,
+        tip, or propose — the economy stalls into a single asset.
         """
         if decision.action not in ("buy", "sell") or price <= 0:
             return decision.action, 0.0, 0.0, 0.0
 
         if decision.action == "buy":
             unit_cost = price * (1 + self.fee_rate)
-            affordable = self.wallet / unit_cost if unit_cost > 0 else 0.0
+            budget = self.wallet * self.max_position_fraction
+            affordable = budget / unit_cost if unit_cost > 0 else 0.0
             quantity = round(min(decision.amount, affordable), 6)
             if quantity <= 0:
                 return "hold", 0.0, 0.0, 0.0

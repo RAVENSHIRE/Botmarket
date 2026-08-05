@@ -52,6 +52,29 @@ class Personality:
             label=label,
         )
 
+    def varied(self, seed: str, spread: float = 0.15) -> Personality:
+        """Return a copy with each trait nudged, deterministically from ``seed``.
+
+        Two agents of the same archetype would otherwise be the same agent
+        wearing a different name: identical traits produce identical decisions
+        tick after tick. Seeding the jitter on the agent's name keeps each one
+        distinct while staying reproducible, which matters because runtime
+        agents are rebuilt from their database row on every tick.
+        """
+        rng = random.Random(seed)
+
+        def nudge(value: float) -> float:
+            return round(min(1.0, max(0.0, value + rng.uniform(-spread, spread))), 3)
+
+        return Personality(
+            risk_appetite=nudge(self.risk_appetite),
+            sociability=nudge(self.sociability),
+            optimism=nudge(self.optimism),
+            creativity=nudge(self.creativity),
+            rationality=nudge(self.rationality),
+            label=self.label,
+        )
+
 
 # Named presets used by the built-in agent archetypes.
 PRESETS: dict[str, Personality] = {

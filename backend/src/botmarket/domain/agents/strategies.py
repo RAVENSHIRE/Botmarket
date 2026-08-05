@@ -45,14 +45,20 @@ class Decision:
 
 
 def trader_strategy(p: Personality, obs: Observation) -> Decision:
-    """Trend-following strategy weighted by risk appetite."""
+    """Trend-following strategy weighted by risk appetite.
+
+    Both the size of the position and the strength of signal required to act on
+    it come from personality: a bolder agent trades sooner and larger. That is
+    what makes two traders with the same rulebook diverge over time.
+    """
     trend = obs.market_trend
     # Bolder agents ask for larger positions; settlement caps them at the
     # credits (buying) or tokens (selling) the agent actually holds.
     size = round(1.0 + 4.0 * p.risk_appetite, 4)
-    if trend > 0.5:
+    threshold = round(0.2 + 1.2 * (1.0 - p.risk_appetite), 4)
+    if trend > threshold:
         return Decision("buy", confidence=min(0.9, 0.5 + p.risk_appetite / 2), amount=size)
-    if trend < -0.5:
+    if trend < -threshold:
         return Decision("sell", confidence=min(0.9, 0.5 + p.rationality / 2), amount=size)
     return Decision("hold", confidence=0.4)
 

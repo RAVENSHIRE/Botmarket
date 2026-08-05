@@ -63,14 +63,50 @@ def test_sell_returns_credits_for_tokens_held():
     assert agent.wallet == pytest.approx(result.quantity * 100.0)
 
 
+def test_buy_never_exceeds_the_position_cap():
+    """A trader deploys a slice of its wallet per signal, not the whole thing."""
+    agent = create_agent("trader", "t4", wallet=1000.0, max_position_fraction=0.25)
+    _observe(agent, trend=2.0)
+    result = agent.execute()
+    assert result.action == "buy"
+    assert -result.credits == pytest.approx(250.0)
+    assert agent.wallet == pytest.approx(750.0)
+
+
+def test_repeated_buying_never_drains_the_wallet():
+    """Successive signals shrink the position rather than reaching zero credits."""
+    agent = create_agent("trader", "t5", wallet=1000.0)
+    for tick in range(20):
+        agent.observe(
+            Observation(tick=tick, market_price=100.0, market_trend=2.0, recent_events=[])
+        )
+        agent.execute()
+    assert agent.wallet > 0
+    assert agent.tokens > 0
+
+
 def test_buy_is_capped_by_the_wallet():
     """A near-broke agent buys only what it can afford and never goes negative."""
-    agent = create_agent("trader", "t4", wallet=50.0)
+    agent = create_agent("trader", "t6", wallet=50.0, max_position_fraction=1.0)
     _observe(agent, trend=2.0)
     result = agent.execute()
     assert result.action == "buy"
     assert agent.wallet >= 0
     assert result.quantity == pytest.approx(0.5)
+
+
+def test_same_archetype_agents_get_different_personalities():
+    """Otherwise two traders are one agent wearing two names."""
+    a = create_agent("trader", "Satoshi")
+    b = create_agent("trader", "Ada")
+    assert a.personality != b.personality
+
+
+def test_personality_is_reproducible_from_the_name():
+    """Runtime agents are rebuilt every tick, so traits must not drift."""
+    first = create_agent("trader", "Satoshi").personality
+    second = create_agent("trader", "Satoshi").personality
+    assert first == second
 
 
 def test_trading_fee_is_charged_on_both_sides():
