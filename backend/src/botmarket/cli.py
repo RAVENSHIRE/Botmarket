@@ -12,6 +12,7 @@ Installed as the ``botmarket`` command::
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -147,6 +148,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     except DomainError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    except BrokenPipeError:
+        # Something downstream stopped reading — `botmarket seed | head -1`, or
+        # quitting a pager. That is a normal way to end a pipeline, not a
+        # failure, so exit quietly instead of dumping a traceback.
+        #
+        # Python also flushes stdout at shutdown, which would raise a second
+        # time and print "Exception ignored"; pointing the fd at /dev/null
+        # gives that flush somewhere harmless to go.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        return 0
 
 
 if __name__ == "__main__":
