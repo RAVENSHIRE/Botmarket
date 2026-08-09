@@ -74,3 +74,52 @@ class TickResult(BaseModel):
     posts_created: int
     actions: list[dict]
     leaderboard: list[dict]
+
+
+class CoinCreate(BaseModel):
+    """Request body for launching a memecoin."""
+
+    name: str = Field(min_length=1, max_length=120)
+    symbol: str = Field(min_length=1, max_length=20)
+    base_price: float = Field(default=1.0, gt=0)
+    slope: float = Field(default=0.01, ge=0)
+    # Optional creator allocation bought at launch (funded from the wallet).
+    initial_buy: float = Field(default=0.0, ge=0)
+
+
+class CoinTrade(BaseModel):
+    """Request body for buying or selling a coin."""
+
+    agent_id: int
+    qty: float = Field(gt=0)
+
+
+class CoinOut(BaseModel):
+    """Public representation of a coin, enriched with computed price/market cap."""
+
+    id: int
+    name: str
+    symbol: str
+    creator_id: int
+    creator_name: str | None
+    supply: float
+    reserve: float
+    base_price: float
+    slope: float
+    spot_price: float
+    market_cap: float
+    status: str
+    tick: int
+
+
+class CoinTradeResult(BaseModel):
+    """Result of a buy or sell against the bonding curve."""
+
+    coin_id: int
+    agent_id: int
+    qty: float
+    cost_or_proceeds: float
+    new_spot_price: float
+    wallet: float
+    holding: float
+    status: str

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -93,6 +93,10 @@ class Transaction(Base):
     )
     amount: Mapped[float] = mapped_column(default=0.0)
     kind: Mapped[str] = mapped_column(String(50), default="trade")
+    # Set for coin-related transactions (launch/buy/sell); NULL otherwise.
+    coin_id: Mapped[int | None] = mapped_column(
+        ForeignKey("coins.id"), nullable=True, index=True
+    )
     tick: Mapped[int] = mapped_column(default=0, index=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 
@@ -110,3 +114,50 @@ class Reputation(Base):
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 
     agent: Mapped["Agent"] = relationship(back_populates="reputation_log")
+
+
+class Coin(Base):
+    """A memecoin launched by an agent and priced by a bonding curve.
+
+    Price is a pure function of ``supply`` via the curve parameters
+    ``base_price`` and ``slope`` (see ``app.economy.bonding_curve``). ``reserve``
+    is the amount of native token collected by the curve. When ``reserve``
+    crosses the graduation threshold the coin's ``status`` becomes
+    ``"graduated"``.
+    """
+
+    __tablename__ = "coins"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    symbol: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    creator_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
+    supply: Mapped[float] = mapped_column(default=0.0)  # tokens in circulation
+    reserve: Mapped[float] = mapped_column(default=0.0)  # native token collected
+    base_price: Mapped[float] = mapped_column(default=1.0)
+    slope: Mapped[float] = mapped_column(default=0.01)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    tick: Mapped[int] = mapped_column(default=0, index=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+    creator: Mapped["Agent"] = relationship()
+    holdings: Mapped[list["CoinHolding"]] = relationship(
+        back_populates="coin", cascade="all, delete-orphan"
+    )
+
+
+class CoinHolding(Base):
+    """An agent's balance of a particular coin."""
+
+    __tablename__ = "coin_holdings"
+    __table_args__ = (
+        UniqueConstraint("coin_id", "agent_id", name="uq_holding_coin_agent"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    coin_id: Mapped[int] = mapped_column(ForeignKey("coins.id"), index=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
+    balance: Mapped[float] = mapped_column(default=0.0)
+
+    coin: Mapped["Coin"] = relationship(back_populates="holdings")
+    agent: Mapped["Agent"] = relationship()

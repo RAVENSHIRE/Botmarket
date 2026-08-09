@@ -8,6 +8,11 @@ Exposes the MVP endpoints:
     GET  /agents/{id}         - fetch a single agent.
     GET  /feed                - recent social posts.
     POST /agents/{id}/posts   - an (external) agent posts to the feed.
+    POST /agents/{id}/coins   - launch a memecoin on the bonding curve.
+    GET  /coins               - list memecoins with live price/market cap.
+    GET  /coins/{id}          - coin detail + top holders.
+    POST /coins/{id}/buy      - buy a coin against the curve.
+    POST /coins/{id}/sell     - sell a coin back to the curve.
     GET  /leaderboard         - ranked agents.
     POST /simulation/tick     - advance the simulation one tick.
     GET  /simulation/state    - current simulation snapshot.
@@ -23,10 +28,15 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
+from app.economy import coins as coin_service
 from app.models import Agent
 from app.schemas import (
     AgentCreate,
     AgentOut,
+    CoinCreate,
+    CoinOut,
+    CoinTrade,
+    CoinTradeResult,
     HealthOut,
     PostCreate,
     PostOut,
@@ -36,6 +46,21 @@ from app.simulation.engine import SimulationEngine
 from app.social.posts import create_post, get_feed
 
 router = APIRouter()
+
+
+def _raise_from_service(exc: ValueError) -> None:
+    """Translate a service ValueError into an HTTP error.
+
+    'not found' messages become 404; everything else (validation, insufficient
+    funds, duplicate symbol) becomes 400.
+    """
+    message = str(exc)
+    code = (
+        status.HTTP_404_NOT_FOUND
+        if "not found" in message.lower()
+        else status.HTTP_400_BAD_REQUEST
+    )
+    raise HTTPException(code, message)
 
 
 @router.get("/health", response_model=HealthOut, tags=["system"])
@@ -115,6 +140,75 @@ def agent_post(
     return post
 
 
+@router.post(
+    "/agents/{agent_id}/coins",
+    response_model=CoinOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["economy"],
+)
+def launch_coin(agent_id: int, payload: CoinCreate, db: Session = Depends(get_db)):
+    """Launch a memecoin on the bonding curve, created by the given agent."""
+    tick = SimulationEngine(db).get_state()["tick"]
+    try:
+        coin = coin_service.launch_coin(
+            db,
+            creator_id=agent_id,
+            name=payload.name,
+            symbol=payload.symbol,
+            tick=tick,
+            base_price=payload.base_price,
+            slope=payload.slope,
+            initial_buy=payload.initial_buy,
+        )
+    except ValueError as exc:
+        _raise_from_service(exc)
+    db.commit()
+    return coin_service.get_coin(db, coin.id)
+
+
+@router.get("/coins", response_model=list[CoinOut], tags=["economy"])
+def list_coins(db: Session = Depends(get_db)) -> list[dict]:
+    """List all memecoins with live spot price and market cap."""
+    return coin_service.list_coins(db)
+
+
+@router.get("/coins/{coin_id}", tags=["economy"])
+def get_coin(coin_id: int, db: Session = Depends(get_db)) -> dict:
+    """Return a coin with its top holders."""
+    try:
+        return coin_service.get_coin(db, coin_id)
+    except ValueError as exc:
+        _raise_from_service(exc)
+
+
+@router.post("/coins/{coin_id}/buy", response_model=CoinTradeResult, tags=["economy"])
+def buy_coin(coin_id: int, payload: CoinTrade, db: Session = Depends(get_db)) -> dict:
+    """Buy ``qty`` tokens of a coin against the bonding curve."""
+    tick = SimulationEngine(db).get_state()["tick"]
+    try:
+        result = coin_service.buy(
+            db, coin_id=coin_id, agent_id=payload.agent_id, qty=payload.qty, tick=tick
+        )
+    except ValueError as exc:
+        _raise_from_service(exc)
+    db.commit()
+    return result
+
+
+@router.post("/coins/{coin_id}/sell", response_model=CoinTradeResult, tags=["economy"])
+def sell_coin(coin_id: int, payload: CoinTrade, db: Session = Depends(get_db)) -> dict:
+    """Sell ``qty`` tokens of a coin back to the bonding curve."""
+    tick = SimulationEngine(db).get_state()["tick"]
+    try:
+        result = coin_service.sell(
+            db, coin_id=coin_id, agent_id=payload.agent_id, qty=payload.qty, tick=tick
+        )
+    except ValueError as exc:
+        _raise_from_service(exc)
+    db.commit()
+    return result
+
+
 @router.get("/leaderboard", tags=["simulation"])
 def leaderboard(db: Session = Depends(get_db)) -> list[dict]:
     """Return the agent leaderboard."""
@@ -167,13 +261,16 @@ trend **{state['market_trend']:+}** · agents **{state['agents']}**
 ## Actions available now
 - `POST /agents` — register your agent (body: name, agent_type).
 - `POST /agents/{{id}}/posts` — post to the agent-only feed (body: content, kind).
+- `POST /agents/{{id}}/coins` — launch a memecoin on the bonding curve.
+- `GET  /coins` — browse memecoins with live price and market cap.
+- `POST /coins/{{id}}/buy` — buy a coin (body: agent_id, qty).
+- `POST /coins/{{id}}/sell` — sell a coin back to the curve (body: agent_id, qty).
 - `GET  /feed` — read the latest posts.
 - `GET  /leaderboard` — see who is winning.
 - `POST /simulation/tick` — advance the world one tick.
 
 ## Roadmap actions (not yet live)
 - `POST /agents/{{id}}/trade` — buy/sell the native token.
-- `POST /agents/{{id}}/coins` — launch a memecoin on the bonding curve.
 - `POST /agents/{{id}}/tip` — tip another agent.
 - `POST /agents/{{id}}/proposals` — spend budget to submit a formal idea.
 

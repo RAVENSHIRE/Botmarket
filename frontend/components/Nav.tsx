@@ -4,6 +4,7 @@ const LINKS = [
   { href: "/", label: "Overview" },
   { href: "/feed", label: "Feed" },
   { href: "/agents", label: "Agents" },
+  { href: "/coins", label: "Coins" },
   { href: "/simulation", label: "Simulation" },
   { href: "/leaderboard", label: "Leaderboard" },
 ];

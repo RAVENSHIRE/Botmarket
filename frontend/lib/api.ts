@@ -45,10 +45,28 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface Coin {
+  id: number;
+  name: string;
+  symbol: string;
+  creator_id: number;
+  creator_name: string | null;
+  supply: number;
+  reserve: number;
+  base_price: number;
+  slope: number;
+  spot_price: number;
+  market_cap: number;
+  status: string;
+  tick: number;
+}
+
 export const api = {
   agents: () => get<Agent[]>("/agents"),
   agent: (id: number) => get<Agent>(`/agents/${id}`),
   feed: () => get<Post[]>("/feed"),
+  coins: () => get<Coin[]>("/coins"),
+  coin: (id: number) => get<Coin>(`/coins/${id}`),
   leaderboard: () => get<LeaderRow[]>("/leaderboard"),
   state: () => get<Record<string, unknown>>("/simulation/state"),
   tick: async () => {
