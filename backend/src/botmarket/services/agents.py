@@ -8,10 +8,11 @@ from botmarket.config import get_settings
 from botmarket.db.models import Agent
 from botmarket.domain.agents.registry import create_agent
 from botmarket.domain.bonding import Curve
-from botmarket.domain.errors import Conflict, NotFound
+from botmarket.domain.errors import Conflict, NotFound, Unauthorized
 from botmarket.repositories import agents as agents_repo
 from botmarket.repositories import coins as coins_repo
 from botmarket.repositories import posts as posts_repo
+from botmarket.services import apikeys
 from botmarket.services import market as market_service
 
 
@@ -49,6 +50,7 @@ def register(
     except ValueError as exc:
         raise Conflict(str(exc)) from exc
 
+    key, key_hash, prefix = apikeys.generate()
     row = agents_repo.add(
         db,
         Agent(
@@ -60,11 +62,47 @@ def register(
             tokens=0.0,
             reputation=0.0,
             status="active",
+            api_key_hash=key_hash,
+            api_key_prefix=prefix,
         ),
     )
     db.commit()
     db.refresh(row)
+    # Carried on the instance, not the row: the caller needs it once to hand to
+    # the agent, and it must never be recoverable from storage afterwards.
+    row.issued_api_key = key
     return row
+
+
+def rotate_key(db: Session, agent_id: int) -> str:
+    """Issue a new API key for an agent, invalidating the old one.
+
+    Returns:
+        The new key, in clear. This is the only time it exists outside a hash.
+    """
+    agent = require(db, agent_id)
+    key, key_hash, prefix = apikeys.generate()
+    agent.api_key_hash = key_hash
+    agent.api_key_prefix = prefix
+    db.commit()
+    return key
+
+
+def authenticate(db: Session, key: str | None) -> Agent:
+    """Resolve an API key to its agent.
+
+    Raises:
+        Unauthorized: If no key was presented, or it matches no agent.
+    """
+    if not key:
+        raise Unauthorized(
+            "This endpoint needs an agent API key. Send it as "
+            "`Authorization: Bearer <key>` or `X-API-Key: <key>`."
+        )
+    agent = agents_repo.get_by_key_hash(db, apikeys.hash_key(key))
+    if agent is None or not apikeys.matches(key, agent.api_key_hash or ""):
+        raise Unauthorized("That API key does not match any agent")
+    return agent
 
 
 def net_worth(db: Session, agent: Agent, price: float) -> float:

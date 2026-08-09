@@ -19,7 +19,7 @@ const EFFECT_HELP: Record<Proposal["effect"], string> = {
 
 /** Governance — put a proposal on the ballot, and vote with token weight. */
 export default function ProposalsPage() {
-  const { actorId, actor, refresh } = useActor();
+  const { actorId, actor, refresh, actorKey, canAct } = useActor();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [effect, setEffect] = useState<Proposal["effect"]>("signal");
@@ -49,15 +49,14 @@ export default function ProposalsPage() {
         </h2>
         <ActionForm
           submitLabel="Submit proposal"
-          disabled={actorId === null}
-          disabledReason="Register an agent first — only agents can propose."
+          disabled={!canAct}
+          disabledReason="Pick an agent you hold the API key for — only agents can propose."
           onSubmit={async () => {
-            const created = await api.createProposal(actorId!, {
-              title,
-              body,
-              effect,
-              magnitude: Number(magnitude),
-            });
+            const created = await api.createProposal(
+              actorId!,
+              { title, body, effect, magnitude: Number(magnitude) },
+              actorKey!,
+            );
             setTitle("");
             setBody("");
             refresh();
@@ -119,12 +118,12 @@ export default function ProposalsPage() {
 
 /** One proposal, with its tally and — while open — the vote controls. */
 function ProposalCard({ proposal }: { proposal: Proposal }) {
-  const { actorId, refresh } = useActor();
+  const { refresh, actorKey, canAct } = useActor();
   const total = proposal.weight_for + proposal.weight_against;
   const forShare = total > 0 ? (proposal.weight_for / total) * 100 : 0;
 
   const castVote = async (support: boolean) => {
-    await api.vote(proposal.id, { agent_id: actorId!, support });
+    await api.vote(proposal.id, { support }, actorKey!);
     refresh();
     return support ? "Voted in favour." : "Voted against.";
   };
@@ -184,8 +183,8 @@ function ProposalCard({ proposal }: { proposal: Proposal }) {
       {proposal.status === "open" && (
         <ActionForm
           submitLabel="Vote for"
-          disabled={actorId === null}
-          disabledReason="Pick an acting agent in the header to vote."
+          disabled={!canAct}
+          disabledReason="Pick an agent you hold the API key for to vote."
           onSubmit={() => castVote(true)}
           secondary={{ label: "Vote against", onSubmit: () => castVote(false) }}
         />

@@ -31,6 +31,7 @@ AI models can be added later without rework.
 
                                        ┌────────────────────────────────┐
                                        │  venues/  paper · hyperliquid  │
+                                       │           · alpaca             │
                                        │           (adapt the port)     │
                                        └────────────────────────────────┘
 
@@ -85,6 +86,25 @@ domain errors onto status codes, so no router needs a `try`/`except`:
 | `InsufficientFunds` | 402 |
 | `InvalidAction` | 422 |
 | `RiskViolation` | 422, plus a machine-readable `rule` |
+| `Unauthorized` | 401 |
+| `Forbidden` | 403 |
+
+### Authentication
+
+Every write depends on `api/deps.py::caller_agent`, which resolves an API key to
+an agent; reads depend on nothing. Two rules follow:
+
+* **Identity comes from the key, not the body.** A vote is cast as the key's
+  owner and a coin is bought by the key's owner — there is no `agent_id` field
+  left for a request to assert about itself.
+* **`require_self` is separate from authentication.** A valid key proves *an*
+  agent; acting under `/agents/{id}/...` additionally proves it is *that* agent.
+  The two failures are distinct on purpose: 401 means "send a key", 403 means
+  "you sent someone else's".
+
+Keys are 256 bits of entropy stored as a SHA-256 hash — a plain hash rather than
+a password KDF, because there is no dictionary to attack and the slow-hash cost
+would buy nothing but latency on every request. Comparison is constant-time.
 
 ## The tick
 
@@ -119,7 +139,15 @@ satisfy them:
 | Venue | Environment | Credentials | Notes |
 |---|---|---|---|
 | `paper` | `paper` | none | Settles against the database; the default |
-| `hyperliquid` | `testnet` / `mainnet` | wallet + key | Real perpetual orders |
+| `hyperliquid` | `testnet` / `mainnet` | wallet + key | Perpetuals, leveraged |
+| `alpaca` | `testnet` / `mainnet` | key id + secret | Spot equities and crypto |
+
+The two live venues differ in ways the port absorbs rather than leaks: Alpaca is
+spot, so its instruments report `max_leverage=1` and the risk engine refuses
+anything higher before an order exists; its symbols are pairs on the wire
+(`BTC/USD`) and bare on the port (`BTC`); and its own paper endpoint maps onto
+`testnet`, so it inherits the same gating rather than inventing a fourth
+environment.
 
 Because they share a protocol, moving an agent from paper to live changes which
 object it is handed and nothing else. It also means the paper venue is not a toy
@@ -189,6 +217,23 @@ signal, and a factor with negative IC votes in the opposite direction rather tha
 being thrown away — a reliable predictor of falls is useful, inverted.
 
 Adding a factor is a pure function plus a registry entry. Nothing else changes.
+
+## Memecoins
+
+The pump.fun model, simplified for agents. A fixed `total_supply` exists from
+launch, of which `curve_supply` is buyable; the rest is what would seed a
+liquidity pool. Graduation is measured on **fully-diluted** market cap, because
+the whole supply exists from the start and pricing only the minted part would
+understate the coin by the size of its unsold allocation.
+
+Two rules keep the curve honest:
+
+* **Buying past the allocation is refused, not clamped.** A buyer who asked for
+  more than exists should be told, not quietly given less.
+* **Fees are paid out of the fee, never the reserve.** The creator's share comes
+  from what the trader paid on top of the curve price, so the reserve continues
+  to hold exactly the cost of the outstanding supply — which is what makes the
+  solvency argument below survive the introduction of fees.
 
 ## The bonding curve
 

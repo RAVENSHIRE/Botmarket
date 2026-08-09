@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query, Response, status
 
-from botmarket.api.deps import DbSession
+from botmarket.api.deps import CallerAgent, DbSession, require_self
 from botmarket.api.schemas import (
     PositionOut,
     RiskLimitsOut,
@@ -20,6 +20,7 @@ from botmarket.api.schemas import (
     VenueOrderRow,
 )
 from botmarket.config import get_settings
+from botmarket.domain.errors import Forbidden
 from botmarket.services import live as live_service
 from botmarket.venues import registry
 
@@ -62,8 +63,11 @@ def list_agent_venues(agent_id: int, db: DbSession):
     response_model=VenueAccountOut,
     status_code=status.HTTP_201_CREATED,
 )
-def link_venue(agent_id: int, payload: VenueAccountCreate, db: DbSession):
+def link_venue(
+    agent_id: int, payload: VenueAccountCreate, db: DbSession, caller: CallerAgent
+):
     """Link an agent to a venue. Any secret is encrypted before storage."""
+    require_self(caller, agent_id)
     account = live_service.link_account(
         db,
         agent_id=agent_id,
@@ -99,8 +103,11 @@ def get_order_history(
 
 
 @router.post("/venue-accounts/{account_id}/orders", response_model=VenueOrderOut)
-def place_order(account_id: int, payload: VenueOrderCreate, db: DbSession):
+def place_order(
+    account_id: int, payload: VenueOrderCreate, db: DbSession, caller: CallerAgent
+):
     """Place an order after risk checks. Mainnet requires explicit confirmation."""
+    _require_owner(db, account_id, caller)
     return live_service.place_order(
         db,
         account_id=account_id,
@@ -116,14 +123,18 @@ def place_order(account_id: int, payload: VenueOrderCreate, db: DbSession):
 
 
 @router.post("/venue-accounts/{account_id}/close/{symbol}", response_model=VenueOrderOut)
-def close_position(account_id: int, symbol: str, db: DbSession):
+def close_position(account_id: int, symbol: str, db: DbSession, caller: CallerAgent):
     """Flatten the account's position in ``symbol``."""
+    _require_owner(db, account_id, caller)
     return live_service.close_position(db, account_id=account_id, symbol=symbol)
 
 
 @router.post("/venue-accounts/{account_id}/active", response_model=VenueAccountOut)
-def set_active(account_id: int, db: DbSession, active: bool = Query(...)):
+def set_active(
+    account_id: int, db: DbSession, caller: CallerAgent, active: bool = Query(...)
+):
     """Enable or disable one account's trading."""
+    _require_owner(db, account_id, caller)
     return live_service.describe_account(
         live_service.set_active(db, account_id, active=active)
     )
@@ -134,7 +145,22 @@ def set_active(account_id: int, db: DbSession, active: bool = Query(...)):
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
 )
-def unlink_venue(account_id: int, db: DbSession) -> Response:
+def unlink_venue(account_id: int, db: DbSession, caller: CallerAgent) -> Response:
     """Delete an account and the credential stored with it."""
+    _require_owner(db, account_id, caller)
     live_service.unlink_account(db, account_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _require_owner(db, account_id: int, caller) -> None:
+    """Assert the caller owns the venue account it is about to act on.
+
+    A venue account is somebody's money. Knowing its id is not authority over
+    it, so ownership is checked rather than inferred from the URL.
+    """
+    account = live_service.require_account(db, account_id)
+    if account.agent_id != caller.id:
+        raise Forbidden(
+            f"Venue account {account_id} belongs to agent {account.agent_id}, "
+            f"not agent {caller.id}"
+        )

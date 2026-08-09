@@ -30,6 +30,9 @@ postgres = ["psycopg[binary]==3.2.3"]
 live = [
     "hyperliquid-python-sdk==0.24.0",
     "eth-account==0.13.7",
+    # The Alpaca adapter speaks their REST API directly rather than pulling in
+    # a second SDK; httpx is all it needs.
+    "httpx==0.28.1",
 ]
 dev = [
     "pytest==8.3.4",

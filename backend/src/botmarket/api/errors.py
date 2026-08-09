@@ -13,14 +13,18 @@ from fastapi.responses import JSONResponse
 from botmarket.domain.errors import (
     Conflict,
     DomainError,
+    Forbidden,
     InsufficientFunds,
     InvalidAction,
     NotFound,
+    Unauthorized,
 )
 from botmarket.domain.risk import RiskViolation
 
 # Most specific first — the first matching class wins.
 STATUS_BY_ERROR: list[tuple[type[DomainError], int]] = [
+    (Unauthorized, status.HTTP_401_UNAUTHORIZED),
+    (Forbidden, status.HTTP_403_FORBIDDEN),
     (NotFound, status.HTTP_404_NOT_FOUND),
     (Conflict, status.HTTP_409_CONFLICT),
     (InsufficientFunds, status.HTTP_402_PAYMENT_REQUIRED),

@@ -23,7 +23,8 @@ const LINKS = [
  */
 export default function Nav() {
   const pathname = usePathname();
-  const { agents, actorId, setActorId, actor, offline } = useActor();
+  const { agents, actorId, setActorId, actor, offline, canAct, rememberKey } =
+    useActor();
 
   return (
     <header className="sticky top-0 z-10 border-b border-edge bg-void/80 backdrop-blur">
@@ -68,6 +69,23 @@ export default function Nav() {
             </select>
             {actor && (
               <span className="text-signal">{actor.wallet.toFixed(0)} cr</span>
+            )}
+            {actorId !== null && !canAct && (
+              <button
+                type="button"
+                className="pill text-warn hover:text-cyan"
+                title="The dashboard has no API key for this agent, so it cannot act as it."
+                onClick={() => {
+                  const key = window.prompt(
+                    `Paste the API key for ${actor?.name ?? "this agent"}.\n\n` +
+                      "Keys are shown once, at registration. If it is lost, " +
+                      "rotate it from the agent's page using the current key.",
+                  );
+                  if (key?.trim()) rememberKey(actorId, key.trim());
+                }}
+              >
+                no key — paste
+              </button>
             )}
           </label>
         )}

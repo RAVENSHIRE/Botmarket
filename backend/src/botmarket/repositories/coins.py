@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from botmarket.db.models import Coin, Holding
+from botmarket.db.models import Coin, CoinReply, Holding
 
 
 def get(db: Session, coin_id: int) -> Coin | None:
@@ -63,5 +63,16 @@ def holders(db: Session, coin_id: int) -> list[Holding]:
         select(Holding)
         .where(Holding.coin_id == coin_id, Holding.quantity > 0)
         .order_by(Holding.quantity.desc())
+    )
+    return list(db.scalars(stmt))
+
+
+def replies(db: Session, coin_id: int, *, limit: int = 50) -> list[CoinReply]:
+    """Return a coin's comment thread, newest first."""
+    stmt = (
+        select(CoinReply)
+        .where(CoinReply.coin_id == coin_id)
+        .order_by(CoinReply.id.desc())
+        .limit(limit)
     )
     return list(db.scalars(stmt))

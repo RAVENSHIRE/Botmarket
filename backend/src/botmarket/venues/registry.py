@@ -14,15 +14,25 @@ from botmarket.db.models import VenueAccount
 from botmarket.domain.errors import InvalidAction, NotFound
 from botmarket.domain.venue import Environment, ExecutionVenue, MarketDataFeed
 from botmarket.services import credentials
+from botmarket.venues import alpaca as alp
 from botmarket.venues import hyperliquid as hl
 from botmarket.venues.paper import PaperMarketData, PaperVenue
 
-VENUE_NAMES = ("paper", "hyperliquid")
+VENUE_NAMES = ("paper", "hyperliquid", "alpaca")
 
 #: Which environments each venue is allowed to run in.
 VENUE_ENVIRONMENTS: dict[str, tuple[Environment, ...]] = {
     "paper": (Environment.PAPER,),
     "hyperliquid": (Environment.TESTNET, Environment.MAINNET),
+    # Alpaca's own paper endpoint maps onto testnet, so it inherits the same
+    # gating and `mainnet` stays the only setting that can lose money.
+    "alpaca": (Environment.TESTNET, Environment.MAINNET),
+}
+
+#: What each venue calls the public half of its credential, for the UI.
+CREDENTIAL_LABELS: dict[str, tuple[str, str]] = {
+    "hyperliquid": ("Wallet address", "Private key"),
+    "alpaca": ("API key ID", "API secret key"),
 }
 
 
@@ -95,6 +105,20 @@ def build_venue(db: Session, account: VenueAccount) -> ExecutionVenue:
             clients, environment=environment, address=account.wallet_address
         )
 
+    if account.venue == "alpaca":
+        if not account.wallet_address:
+            raise InvalidAction("This Alpaca account has no API key ID")
+        if not account.encrypted_secret:
+            raise InvalidAction(
+                "This Alpaca account has no secret key, so it cannot trade. "
+                "Re-link it with both the key ID and the secret."
+            )
+        transport = alp.build_transport(
+            key_id=account.wallet_address,
+            secret_key=credentials.open_secret(account.encrypted_secret),
+        )
+        return alp.AlpacaVenue(transport, environment=environment)
+
     raise NotFound(f"No venue implementation for '{account.venue}'")
 
 
@@ -110,6 +134,14 @@ def build_market_data(venue: str, environment: Environment) -> MarketDataFeed:
     if venue == "paper":
         return PaperMarketData()
 
+    if venue == "alpaca":
+        # Alpaca gates market data behind the same credentials as trading, so
+        # there is no anonymous feed to hand back.
+        raise InvalidAction(
+            "Alpaca market data needs credentials; read it through a linked "
+            "account rather than anonymously."
+        )
+
     clients = hl.build_clients(environment=environment, address="", secret_key=None)
     return hl.HyperliquidMarketData(clients, environment=environment)
 
@@ -124,6 +156,8 @@ def describe_venues() -> list[dict]:
             "requires_credentials": name != "paper",
             "available": name == "paper" or credentials.is_configured(),
             "mainnet_allowed": settings.allow_mainnet,
+            "public_label": CREDENTIAL_LABELS.get(name, ("", ""))[0],
+            "secret_label": CREDENTIAL_LABELS.get(name, ("", ""))[1],
         }
         for name in VENUE_NAMES
     ]

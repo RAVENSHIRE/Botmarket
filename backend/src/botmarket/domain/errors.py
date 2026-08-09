@@ -26,3 +26,15 @@ class InsufficientFunds(DomainError):
 
 class InvalidAction(DomainError):
     """The action is well-formed but not allowed in the current state."""
+
+
+class Unauthorized(DomainError):
+    """No usable credential was presented."""
+
+
+class Forbidden(DomainError):
+    """A valid credential was presented, but not for this agent.
+
+    Kept distinct from :class:`Unauthorized` because the fixes differ: one means
+    "send a key", the other means "you sent someone else's".
+    """

@@ -72,6 +72,25 @@ class AgentCreate(BaseModel):
     wallet: float | None = Field(default=None, ge=0)
 
 
+class AgentCreated(BaseModel):
+    """The response to registering an agent.
+
+    The API key appears here and nowhere else, ever. Store it now.
+    """
+
+    agent: AgentOut
+    api_key: str = Field(
+        description="Shown once. Send as `Authorization: Bearer <key>` or `X-API-Key`."
+    )
+
+
+class ApiKeyOut(BaseModel):
+    """A freshly issued API key."""
+
+    agent_id: int
+    api_key: str
+
+
 class HoldingOut(BaseModel):
     """One memecoin position held by an agent."""
 
@@ -154,6 +173,8 @@ class CoinCreate(BaseModel):
 
     symbol: str = Field(min_length=2, max_length=12, pattern=r"^[A-Za-z0-9]+$")
     name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2000)
+    image_url: str | None = Field(default=None, max_length=500)
 
 
 class CoinOut(BaseModel):
@@ -162,23 +183,37 @@ class CoinOut(BaseModel):
     id: int
     symbol: str
     name: str
+    description: str
+    image_url: str | None
     creator_id: int
     creator_name: str | None
     supply: float
+    curve_supply: float
+    total_supply: float
     reserve: float
     spot_price: float
     market_cap: float
-    status: str
-    graduation_reserve: float
+    graduation_market_cap: float
     progress: float
+    remaining_supply: float
+    status: str
     holders: int
+    volume: float
+    trades: int
+    reply_count: int
+    creator_fees_earned: float
+    fee_bps: float
     created_tick: int
+    last_trade_tick: int
+    graduated_tick: int | None
 
 
 class CoinTradeCreate(BaseModel):
-    """Request body for buying or selling a memecoin on its curve."""
+    """Request body for buying or selling a memecoin on its curve.
 
-    agent_id: int
+    The buyer is the API key's owner, so there is no ``agent_id`` to spoof.
+    """
+
     quantity: float = Field(gt=0)
 
 
@@ -190,12 +225,45 @@ class CoinTradeOut(BaseModel):
     quantity: float
     cost: float | None = None
     refund: float | None = None
+    fee: float = 0.0
     spot_price: float
+    market_cap: float
     supply: float
     reserve: float
     graduated: bool = False
     wallet: float
     tick: int
+
+
+class CoinTradeRow(BaseModel):
+    """One entry in a coin's trade feed."""
+
+    agent_id: int
+    agent_name: str | None
+    side: str
+    quantity: float
+    credits: float
+    tick: int
+    symbol: str
+
+
+class CoinReplyCreate(BaseModel):
+    """Request body for commenting on a coin."""
+
+    content: str = Field(min_length=1, max_length=1000)
+
+
+class CoinReplyOut(BaseModel):
+    """A comment on a coin's thread."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    coin_id: int
+    agent_id: int
+    content: str
+    tick: int
+    created_at: datetime
 
 
 # --- Governance ----------------------------------------------------------
@@ -230,9 +298,12 @@ class ProposalOut(BaseModel):
 
 
 class VoteCreate(BaseModel):
-    """Request body for casting a vote."""
+    """Request body for casting a vote.
 
-    agent_id: int
+    The voter is the API key's owner, so weight cannot be voted on another
+    agent's behalf.
+    """
+
     support: bool = True
 
 
@@ -346,6 +417,9 @@ class VenueInfo(BaseModel):
     requires_credentials: bool
     available: bool
     mainnet_allowed: bool
+    # What this venue calls the two halves of its credential, for the UI.
+    public_label: str = ""
+    secret_label: str = ""
 
 
 class RiskLimitsOut(BaseModel):
@@ -368,10 +442,14 @@ class VenueAccountCreate(BaseModel):
     returns it.
     """
 
-    venue: Literal["paper", "hyperliquid"]
+    venue: Literal["paper", "hyperliquid", "alpaca"]
     environment: Literal["paper", "testnet", "mainnet"]
     label: str = Field(default="", max_length=120)
-    wallet_address: str | None = Field(default=None, max_length=120)
+    wallet_address: str | None = Field(
+        default=None,
+        max_length=120,
+        description="Public half of the credential: a wallet address, or an API key ID.",
+    )
     secret: str | None = Field(
         default=None,
         max_length=512,

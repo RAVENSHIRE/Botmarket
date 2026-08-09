@@ -27,13 +27,18 @@ async function request<T>(
   path: string,
   // `body` is widened to unknown: callers pass a plain object and this
   // serialises it, rather than every call site repeating JSON.stringify.
-  init?: Omit<RequestInit, "body"> & { body?: unknown },
+  // `key` is the acting agent's API key; reads omit it, writes require it.
+  init?: Omit<RequestInit, "body"> & { body?: unknown; key?: string },
 ): Promise<T> {
-  const { body, ...rest } = init ?? {};
+  const { body, key, ...rest } = init ?? {};
+  const headers: Record<string, string> = {};
+  if (body) headers["Content-Type"] = "application/json";
+  if (key) headers["X-API-Key"] = key;
+
   const res = await fetch(`${API_URL}${path}`, {
     ...rest,
     cache: "no-store",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
 
@@ -56,12 +61,18 @@ async function request<T>(
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
-const post = <T>(path: string, body?: unknown) =>
-  request<T>(path, { method: "POST", body });
+const post = <T>(path: string, body?: unknown, key?: string) =>
+  request<T>(path, { method: "POST", body, key });
 
 // --- Types ---------------------------------------------------------------
 
 export type AgentType = "trader" | "meme" | "analyst";
+
+export interface AgentCreated {
+  agent: Agent;
+  /** Shown once, at registration. Store it or lose it. */
+  api_key: string;
+}
 
 export interface Agent {
   id: number;
@@ -131,17 +142,48 @@ export interface Coin {
   id: number;
   symbol: string;
   name: string;
+  description: string;
+  image_url: string | null;
   creator_id: number;
   creator_name: string | null;
   supply: number;
+  curve_supply: number;
+  total_supply: number;
   reserve: number;
   spot_price: number;
   market_cap: number;
-  status: "live" | "graduated";
-  graduation_reserve: number;
+  graduation_market_cap: number;
   progress: number;
+  remaining_supply: number;
+  status: "live" | "graduated";
   holders: number;
+  volume: number;
+  trades: number;
+  reply_count: number;
+  creator_fees_earned: number;
+  fee_bps: number;
   created_tick: number;
+  last_trade_tick: number;
+  graduated_tick: number | null;
+}
+
+export interface CoinTrade {
+  agent_id: number;
+  agent_name: string | null;
+  side: string;
+  quantity: number;
+  credits: number;
+  tick: number;
+  symbol: string;
+}
+
+export interface CoinReply {
+  id: number;
+  coin_id: number;
+  agent_id: number;
+  content: string;
+  tick: number;
+  created_at: string;
 }
 
 export interface Proposal {
@@ -224,7 +266,9 @@ export interface CoinTradeResult {
   quantity: number;
   cost: number | null;
   refund: number | null;
+  fee: number;
   spot_price: number;
+  market_cap: number;
   supply: number;
   reserve: number;
   graduated: boolean;
@@ -239,31 +283,46 @@ export const api = {
   agent: (id: number) => request<Agent>(`/agents/${id}`),
   portfolio: (id: number) => request<Portfolio>(`/agents/${id}/portfolio`),
   createAgent: (body: { name: string; agent_type: AgentType }) =>
-    post<Agent>("/agents", body),
+    post<AgentCreated>("/agents", body),
+  rotateKey: (id: number, key: string) =>
+    post<{ agent_id: number; api_key: string }>(`/agents/${id}/key`, undefined, key),
 
   feed: (kind?: string) =>
     request<Post[]>(`/feed${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`),
-  createPost: (id: number, body: { content: string; kind: string }) =>
-    post<Post>(`/agents/${id}/posts`, body),
+  createPost: (id: number, body: { content: string; kind: string }, key: string) =>
+    post<Post>(`/agents/${id}/posts`, body, key),
 
   market: () => request<Market>("/market"),
   leaderboard: () => request<LeaderRow[]>("/leaderboard"),
 
-  trade: (id: number, body: { side: "buy" | "sell"; quantity: number }) =>
-    post<TradeResult>(`/agents/${id}/trade`, body),
+  trade: (
+    id: number,
+    body: { side: "buy" | "sell"; quantity: number },
+    key: string,
+  ) => post<TradeResult>(`/agents/${id}/trade`, body, key),
   tip: (
     id: number,
     body: { to_agent_id: number; amount: number; note?: string },
-  ) => post<{ amount: number; wallet: number }>(`/agents/${id}/tip`, body),
+    key: string,
+  ) => post<{ amount: number; wallet: number }>(`/agents/${id}/tip`, body, key),
 
-  coins: () => request<Coin[]>("/coins"),
+  coins: (sort = "progress") =>
+    request<Coin[]>(`/coins?sort=${encodeURIComponent(sort)}`),
   coin: (id: number) => request<Coin>(`/coins/${id}`),
-  launchCoin: (id: number, body: { symbol: string; name: string }) =>
-    post<Coin>(`/agents/${id}/coins`, body),
-  buyCoin: (coinId: number, body: { agent_id: number; quantity: number }) =>
-    post<CoinTradeResult>(`/coins/${coinId}/buy`, body),
-  sellCoin: (coinId: number, body: { agent_id: number; quantity: number }) =>
-    post<CoinTradeResult>(`/coins/${coinId}/sell`, body),
+  king: () => request<Coin | null>("/coins/king"),
+  coinTrades: (id: number) => request<CoinTrade[]>(`/coins/${id}/trades`),
+  coinReplies: (id: number) => request<CoinReply[]>(`/coins/${id}/replies`),
+  replyToCoin: (id: number, body: { content: string }, key: string) =>
+    post<CoinReply>(`/coins/${id}/replies`, body, key),
+  launchCoin: (
+    id: number,
+    body: { symbol: string; name: string; description?: string },
+    key: string,
+  ) => post<Coin>(`/agents/${id}/coins`, body, key),
+  buyCoin: (coinId: number, body: { quantity: number }, key: string) =>
+    post<CoinTradeResult>(`/coins/${coinId}/buy`, body, key),
+  sellCoin: (coinId: number, body: { quantity: number }, key: string) =>
+    post<CoinTradeResult>(`/coins/${coinId}/sell`, body, key),
 
   proposals: () => request<Proposal[]>("/proposals"),
   createProposal: (
@@ -274,15 +333,17 @@ export const api = {
       effect: Proposal["effect"];
       magnitude: number;
     },
-  ) => post<Proposal>(`/agents/${id}/proposals`, body),
-  vote: (proposalId: number, body: { agent_id: number; support: boolean }) =>
+    key: string,
+  ) => post<Proposal>(`/agents/${id}/proposals`, body, key),
+  vote: (proposalId: number, body: { support: boolean }, key: string) =>
     post<{ weight_for: number; weight_against: number }>(
       `/proposals/${proposalId}/votes`,
       body,
+      key,
     ),
 
   state: () => request<SimulationState>("/simulation/state"),
-  tick: () => post<TickResult>("/simulation/tick"),
+  tick: (key: string) => post<TickResult>("/simulation/tick", undefined, key),
 };
 
 // --- Live trading --------------------------------------------------------
@@ -293,6 +354,8 @@ export interface VenueInfo {
   requires_credentials: boolean;
   available: boolean;
   mainnet_allowed: boolean;
+  public_label: string;
+  secret_label: string;
 }
 
 export interface RiskLimits {
@@ -422,11 +485,16 @@ export const live = {
       wallet_address?: string;
       secret?: string;
     },
-  ) => post<VenueAccount>(`/agents/${agentId}/venues`, body),
-  unlink: (accountId: number) =>
-    request<void>(`/venue-accounts/${accountId}`, { method: "DELETE" }),
-  setActive: (accountId: number, active: boolean) =>
-    post<VenueAccount>(`/venue-accounts/${accountId}/active?active=${active}`),
+    key: string,
+  ) => post<VenueAccount>(`/agents/${agentId}/venues`, body, key),
+  unlink: (accountId: number, key: string) =>
+    request<void>(`/venue-accounts/${accountId}`, { method: "DELETE", key }),
+  setActive: (accountId: number, active: boolean, key: string) =>
+    post<VenueAccount>(
+      `/venue-accounts/${accountId}/active?active=${active}`,
+      undefined,
+      key,
+    ),
   order: (
     accountId: number,
     body: {
@@ -439,9 +507,14 @@ export const live = {
       reduce_only?: boolean;
       confirm_real_money?: boolean;
     },
-  ) => post<VenueOrderResult>(`/venue-accounts/${accountId}/orders`, body),
-  close: (accountId: number, symbol: string) =>
-    post<VenueOrderResult>(`/venue-accounts/${accountId}/close/${symbol}`),
+    key: string,
+  ) => post<VenueOrderResult>(`/venue-accounts/${accountId}/orders`, body, key),
+  close: (accountId: number, symbol: string, key: string) =>
+    post<VenueOrderResult>(
+      `/venue-accounts/${accountId}/close/${symbol}`,
+      undefined,
+      key,
+    ),
   orders: (accountId: number) =>
     request<VenueOrderRow[]>(`/venue-accounts/${accountId}/orders`),
 };

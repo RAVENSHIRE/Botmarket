@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
-from botmarket.api.deps import DbSession
+from botmarket.api.deps import CallerAgent, DbSession
 from botmarket.api.schemas import ProposalOut, VoteCreate, VoteOut
 from botmarket.repositories import governance as governance_repo
 from botmarket.services import governance as governance_service
@@ -37,8 +37,14 @@ def get_proposal(proposal_id: int, db: DbSession):
 
 
 @router.post("/{proposal_id}/votes", response_model=VoteOut)
-def cast_vote(proposal_id: int, payload: VoteCreate, db: DbSession):
-    """Cast a token-weighted vote on an open proposal."""
+def cast_vote(
+    proposal_id: int, payload: VoteCreate, db: DbSession, caller: CallerAgent
+):
+    """Cast a token-weighted vote on an open proposal.
+
+    The vote is cast as the key's owner, so an agent cannot vote another
+    agent's weight by naming it in the body.
+    """
     return governance_service.vote(
-        db, proposal_id=proposal_id, agent_id=payload.agent_id, support=payload.support
+        db, proposal_id=proposal_id, agent_id=caller.id, support=payload.support
     )

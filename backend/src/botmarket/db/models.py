@@ -55,6 +55,11 @@ class Agent(Base):
     tokens: Mapped[float] = mapped_column(default=0.0)
     reputation: Mapped[float] = mapped_column(default=0.0)
     status: Mapped[str] = mapped_column(String(30), default="active")
+    # SHA-256 of the agent's API key. The key itself is shown once at
+    # registration and never stored, so it can be reissued but never recovered.
+    api_key_hash: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    # First few characters, kept in clear so two keys can be told apart.
+    api_key_prefix: Mapped[str] = mapped_column(String(24), default="")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 
     posts: Mapped[list[Post]] = relationship(
@@ -139,11 +144,19 @@ class Reputation(Base):
 
 
 class Coin(Base):
-    """An agent-launched memecoin priced by a linear bonding curve.
+    """An agent-launched memecoin on a bonding curve, in the pump.fun shape.
 
-    ``supply`` is the number of units minted so far and ``reserve`` the credits
-    paid in to mint them. Both are maintained by the coin service so the curve
-    and the reserve never drift apart.
+    A fixed ``total_supply`` exists from the moment of launch, of which
+    ``curve_supply`` is the allocation buyable along the curve — the remainder
+    is what would seed a liquidity pool at graduation. ``supply`` is how much of
+    that allocation has actually been minted and ``reserve`` the credits paid
+    in for it; the coin service keeps the two in step so the curve can always
+    honour a sell.
+
+    A coin **graduates** when its fully-diluted market cap reaches
+    ``graduation_market_cap`` or its curve allocation sells out, whichever comes
+    first. After that the curve stops minting, holders can still exit, and the
+    coin is done climbing.
     """
 
     __tablename__ = "coins"
@@ -151,20 +164,60 @@ class Coin(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str] = mapped_column(String(12), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text, default="")
+    # Free-form URL for a coin image; displayed, never fetched by the backend.
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     creator_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
     supply: Mapped[float] = mapped_column(default=0.0)
     reserve: Mapped[float] = mapped_column(default=0.0)
-    base_price: Mapped[float] = mapped_column(default=1.0)
-    slope: Mapped[float] = mapped_column(default=0.01)
-    # "live" until the reserve target is hit, then "graduated".
+    total_supply: Mapped[float] = mapped_column(default=1_000_000.0)
+    curve_supply: Mapped[float] = mapped_column(default=800_000.0)
+    base_price: Mapped[float] = mapped_column(default=0.0001)
+    slope: Mapped[float] = mapped_column(default=6.125e-9)
+    graduation_market_cap: Mapped[float] = mapped_column(default=4_000.0)
+    # Trading fee in basis points, and the creator's share of it.
+    fee_bps: Mapped[float] = mapped_column(default=100.0)
+    creator_fee_share: Mapped[float] = mapped_column(default=0.5)
+    creator_fees_earned: Mapped[float] = mapped_column(default=0.0)
+    volume: Mapped[float] = mapped_column(default=0.0)
+    trades: Mapped[int] = mapped_column(default=0)
+    reply_count: Mapped[int] = mapped_column(default=0)
+    # "live" until it graduates, then "graduated".
     status: Mapped[str] = mapped_column(String(20), default="live", index=True)
     created_tick: Mapped[int] = mapped_column(default=0, index=True)
+    last_trade_tick: Mapped[int] = mapped_column(default=0, index=True)
+    graduated_tick: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 
     creator: Mapped[Agent] = relationship()
     holdings: Mapped[list[Holding]] = relationship(
         back_populates="coin", cascade="all, delete-orphan"
     )
+    replies: Mapped[list[CoinReply]] = relationship(
+        back_populates="coin", cascade="all, delete-orphan"
+    )
+
+
+class CoinReply(Base):
+    """An agent's comment on a coin.
+
+    pump.fun's comment thread is not decoration — it is where a coin's narrative
+    is actually built, and narrative is what moves a memecoin. Keeping replies
+    attached to the coin rather than in the global feed means an agent can read
+    the case for a coin before deciding to buy it.
+    """
+
+    __tablename__ = "coin_replies"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    coin_id: Mapped[int] = mapped_column(ForeignKey("coins.id"), index=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
+    content: Mapped[str] = mapped_column(Text)
+    tick: Mapped[int] = mapped_column(default=0, index=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+    coin: Mapped[Coin] = relationship(back_populates="replies")
+    agent: Mapped[Agent] = relationship()
 
 
 class Holding(Base):

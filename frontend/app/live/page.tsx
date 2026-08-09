@@ -20,7 +20,7 @@ const WATCHLIST = ["BTC", "ETH", "SOL"];
  * confirmation the backend independently requires.
  */
 export default function LivePage() {
-  const { actorId, actor } = useActor();
+  const { actorId, actor, canAct } = useActor();
 
   const { data: venues } = useResource(useCallback(() => live.venues(), []));
   const { data: limits } = useResource(useCallback(() => live.limits(), []));
@@ -34,11 +34,11 @@ export default function LivePage() {
     ),
   );
 
-  if (!actorId) {
+  if (!actorId || !canAct) {
     return (
       <Empty
-        message="Pick an acting agent in the header."
-        hint="Venue accounts belong to an agent, so the desk needs to know who is trading."
+        message="Pick an agent you hold the API key for."
+        hint="Venue accounts belong to an agent, and every order is authenticated as that agent."
       />
     );
   }
@@ -121,7 +121,7 @@ function LinkForm({
   agentId: number;
   venues: Awaited<ReturnType<typeof live.venues>>;
 }) {
-  const { refresh } = useActor();
+  const { refresh, actorKey } = useActor();
   const [venue, setVenue] = useState("paper");
   const [environment, setEnvironment] = useState("paper");
   const [address, setAddress] = useState("");
@@ -135,12 +135,16 @@ function LinkForm({
     <ActionForm
       submitLabel={isMainnet ? "Link REAL-MONEY account" : "Link account"}
       onSubmit={async () => {
-        const account = await live.link(agentId, {
-          venue,
-          environment,
-          wallet_address: address || undefined,
-          secret: secret || undefined,
-        });
+        const account = await live.link(
+          agentId,
+          {
+            venue,
+            environment,
+            wallet_address: address || undefined,
+            secret: secret || undefined,
+          },
+          actorKey!,
+        );
         setSecret("");
         setAddress("");
         refresh();
@@ -178,18 +182,22 @@ function LinkForm({
       {isLive && (
         <>
           <Field
-            label="Wallet address"
+            label={selected?.public_label || "Public identifier"}
             value={address}
             onChange={(e) => setAddress(e.target.value)}
-            placeholder="0x…"
+            placeholder={venue === "alpaca" ? "PK…" : "0x…"}
             required
           />
           <Field
-            label="Private key (encrypted at rest, never shown again)"
+            label={`${selected?.secret_label || "Secret"} (encrypted at rest, never shown again)`}
             type="password"
             value={secret}
             onChange={(e) => setSecret(e.target.value)}
-            placeholder="leave blank to link read-only"
+            placeholder={
+              venue === "alpaca"
+                ? "required — Alpaca needs both halves"
+                : "leave blank to link read-only"
+            }
           />
         </>
       )}
@@ -249,7 +257,7 @@ function SignalTable({ rows }: { rows: MarketRow[] }) {
 
 /** One venue account: balances, positions and the order ticket. */
 function AccountPanel({ account }: { account: VenueAccount }) {
-  const { refresh } = useActor();
+  const { refresh, actorKey } = useActor();
   const [symbol, setSymbol] = useState("BTC");
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [size, setSize] = useState("0.01");
@@ -295,7 +303,7 @@ function AccountPanel({ account }: { account: VenueAccount }) {
           <button
             className="pill hover:text-cyan"
             onClick={async () => {
-              await live.setActive(account.id, !account.active);
+              await live.setActive(account.id, !account.active, actorKey!);
               refresh();
             }}
           >
@@ -325,13 +333,17 @@ function AccountPanel({ account }: { account: VenueAccount }) {
             // A refused order still writes an audit row, so refresh either way.
             onSettled={refresh}
             onSubmit={async () => {
-              const result = await live.order(account.id, {
-                symbol,
-                side,
-                size: Number(size),
-                leverage: Number(leverage),
-                confirm_real_money: confirm,
-              });
+              const result = await live.order(
+                account.id,
+                {
+                  symbol,
+                  side,
+                  size: Number(size),
+                  leverage: Number(leverage),
+                  confirm_real_money: confirm,
+                },
+                actorKey!,
+              );
               refresh();
               return result.accepted
                 ? `${result.side} ${result.filled_size} ${result.symbol} @ ${result.average_price.toFixed(2)}`
@@ -340,7 +352,7 @@ function AccountPanel({ account }: { account: VenueAccount }) {
             secondary={{
               label: "Close position",
               onSubmit: async () => {
-                const result = await live.close(account.id, symbol);
+                const result = await live.close(account.id, symbol, actorKey!);
                 refresh();
                 return result.accepted
                   ? `Closed ${result.symbol}.`

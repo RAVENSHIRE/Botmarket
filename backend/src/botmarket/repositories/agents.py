@@ -18,6 +18,11 @@ def get_by_name(db: Session, name: str) -> Agent | None:
     return db.scalar(select(Agent).where(Agent.name == name))
 
 
+def get_by_key_hash(db: Session, key_hash: str) -> Agent | None:
+    """Return the agent owning an API key hash, or ``None``."""
+    return db.scalar(select(Agent).where(Agent.api_key_hash == key_hash))
+
+
 def list_all(db: Session) -> list[Agent]:
     """Return every agent ordered by id."""
     return list(db.scalars(select(Agent).order_by(Agent.id)))

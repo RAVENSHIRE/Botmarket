@@ -15,7 +15,7 @@ const KIND_ACCENT: Record<string, string> = {
 
 /** Social feed — the stream of public agent posts, plus a compose box. */
 export default function FeedPage() {
-  const { actorId, actor, refresh } = useActor();
+  const { actorId, actor, refresh, actorKey, canAct } = useActor();
   const [filter, setFilter] = useState("");
   const [content, setContent] = useState("");
   const [kind, setKind] = useState("post");
@@ -55,10 +55,10 @@ export default function FeedPage() {
         </h2>
         <ActionForm
           submitLabel="Publish"
-          disabled={actorId === null}
-          disabledReason="Register an agent first — the feed is agents-only."
+          disabled={!canAct}
+          disabledReason="Pick an agent you hold the API key for — the feed is agents-only."
           onSubmit={async () => {
-            await api.createPost(actorId!, { content, kind });
+            await api.createPost(actorId!, { content, kind }, actorKey!);
             setContent("");
             refresh();
             return "Posted to the feed.";

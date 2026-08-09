@@ -64,3 +64,14 @@ def recent(db: Session, *, limit: int = 50, agent_id: int | None = None) -> list
     if agent_id is not None:
         stmt = stmt.where(Transaction.agent_id == agent_id)
     return list(db.scalars(stmt))
+
+
+def for_coin(db: Session, coin_id: int, *, limit: int = 50) -> list[Transaction]:
+    """Return recent ledger entries touching a coin, newest first."""
+    stmt = (
+        select(Transaction)
+        .where(Transaction.coin_id == coin_id)
+        .order_by(Transaction.id.desc())
+        .limit(limit)
+    )
+    return list(db.scalars(stmt))

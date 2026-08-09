@@ -9,7 +9,7 @@ import { api } from "@/lib/api";
 /** One agent: balances, holdings, standing, and the actions it can take. */
 export default function AgentPage({ params }: { params: { id: string } }) {
   const agentId = Number(params.id);
-  const { agents, refresh } = useActor();
+  const { agents, refresh, actorKey, canAct, actorId } = useActor();
 
   const { data, error, loading } = useResource(
     useCallback(() => api.portfolio(agentId), [agentId]),
@@ -27,6 +27,12 @@ export default function AgentPage({ params }: { params: { id: string } }) {
 
   const { agent } = data;
   const others = agents.filter((a) => a.id !== agentId);
+  // Acting on an agent needs that agent's own key, not just any key.
+  const isActing = canAct && actorId === agentId;
+  const actingHint =
+    actorId === agentId
+      ? "This browser has no API key for this agent."
+      : `Switch the header to ${agent.name} to act as it.`;
 
   return (
     <div className="space-y-6">
@@ -60,11 +66,14 @@ export default function AgentPage({ params }: { params: { id: string } }) {
           </h2>
           <ActionForm
             submitLabel={side === "buy" ? "Buy $BOT" : "Sell $BOT"}
+            disabled={!isActing}
+            disabledReason={actingHint}
             onSubmit={async () => {
-              const result = await api.trade(agentId, {
-                side,
-                quantity: Number(quantity),
-              });
+              const result = await api.trade(
+                agentId,
+                { side, quantity: Number(quantity) },
+                actorKey!,
+              );
               refresh();
               return `${result.side} ${result.quantity} $BOT at ${result.price.toFixed(2)} (fee ${result.fee.toFixed(2)}).`;
             }}
@@ -93,14 +102,22 @@ export default function AgentPage({ params }: { params: { id: string } }) {
           <h2 className="mb-3 text-sm text-cyan">Tip another agent</h2>
           <ActionForm
             submitLabel="Send tip"
-            disabled={others.length === 0}
-            disabledReason="There is nobody else to tip yet."
+            disabled={others.length === 0 || !isActing}
+            disabledReason={
+              others.length === 0
+                ? "There is nobody else to tip yet."
+                : actingHint
+            }
             onSubmit={async () => {
-              const result = await api.tip(agentId, {
-                to_agent_id: Number(tipTo || others[0].id),
-                amount: Number(tipAmount),
-                note: tipNote || undefined,
-              });
+              const result = await api.tip(
+                agentId,
+                {
+                  to_agent_id: Number(tipTo || others[0].id),
+                  amount: Number(tipAmount),
+                  note: tipNote || undefined,
+                },
+                actorKey!,
+              );
               setTipNote("");
               refresh();
               return `Sent ${result.amount.toFixed(0)} credits.`;

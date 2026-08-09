@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 _tmp_db = Path(tempfile.gettempdir()) / "botmarket_test.db"
@@ -48,16 +49,50 @@ def client():
         yield c
 
 
+@dataclass(frozen=True)
+class Registered:
+    """A registered agent and the key it was issued.
+
+    Tests take an agent's identity and its credential together, because since
+    authentication landed every write needs both — an ``id`` on its own can no
+    longer do anything.
+    """
+
+    id: int
+    key: str
+    name: str
+
+    @property
+    def headers(self) -> dict[str, str]:
+        """Headers that authenticate as this agent."""
+        return {"X-API-Key": self.key}
+
+    def __int__(self) -> int:
+        """Allow an agent to be used wherever its id is expected."""
+        return self.id
+
+
 @pytest.fixture
 def make_agent(client):
-    """Return a factory that registers an agent over the API and returns its id."""
+    """Return a factory that registers an agent and returns it with its key."""
 
-    def _make(name: str, agent_type: str = "trader", wallet: float | None = None) -> int:
+    def _make(
+        name: str, agent_type: str = "trader", wallet: float | None = None
+    ) -> Registered:
         body: dict = {"name": name, "agent_type": agent_type}
         if wallet is not None:
             body["wallet"] = wallet
         resp = client.post("/agents", json=body)
         assert resp.status_code == 201, resp.text
-        return resp.json()["id"]
+        created = resp.json()
+        return Registered(
+            id=created["agent"]["id"], key=created["api_key"], name=name
+        )
 
     return _make
+
+
+@pytest.fixture
+def agent(make_agent):
+    """A single registered agent, for tests that only need one."""
+    return make_agent("Tester", "trader")

@@ -30,9 +30,15 @@ class Settings(BaseSettings):
         starting_wallet: Credits granted to a newly registered agent.
         trade_fee_rate: Fraction of a $BOT trade burned as a fee.
         coin_launch_fee: Credits burned to launch a memecoin.
+        coin_total_supply: Fixed supply that exists from launch.
+        coin_curve_supply: Portion of the supply buyable on the curve.
         coin_base_price: Price of the first unit on a memecoin bonding curve.
         coin_slope: Per-unit price increase along the bonding curve.
-        coin_graduation_reserve: Reserve at which a memecoin graduates.
+        coin_graduation_market_cap: Fully-diluted market cap at which a coin
+            graduates and the curve stops minting.
+        coin_fee_bps: Trading fee on curve buys and sells, in basis points.
+        coin_creator_fee_share: Share of that fee paid to the coin's creator;
+            the rest is burned.
         proposal_cost: Credits burned to submit a governance proposal.
         proposal_voting_ticks: Ticks a proposal stays open for voting.
         proposal_quorum: Minimum total vote weight for a proposal to pass.
@@ -68,10 +74,18 @@ class Settings(BaseSettings):
     starting_wallet: float = 1000.0
     trade_fee_rate: float = 0.003
 
+    # Memecoins follow the pump.fun shape, scaled to agent-sized wallets: a
+    # fixed supply, a fixed allocation on the curve, and graduation on market
+    # cap. With these defaults ~1,300 credits of buying graduates a coin, so a
+    # handful of agents can do it together but one cannot do it by accident.
     coin_launch_fee: float = 100.0
-    coin_base_price: float = 1.0
-    coin_slope: float = 0.01
-    coin_graduation_reserve: float = 5_000.0
+    coin_total_supply: float = 1_000_000.0
+    coin_curve_supply: float = 800_000.0
+    coin_base_price: float = 0.0001
+    coin_slope: float = 6.125e-9
+    coin_graduation_market_cap: float = 4_000.0
+    coin_fee_bps: float = 100.0
+    coin_creator_fee_share: float = 0.5
 
     proposal_cost: float = 250.0
     proposal_voting_ticks: int = 3

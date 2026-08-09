@@ -8,7 +8,7 @@ import { api, ApiError, type TickResult } from "@/lib/api";
 
 /** Live simulation dashboard — advance ticks and watch the world react. */
 export default function SimulationPage() {
-  const { refresh } = useActor();
+  const { refresh, actorKey, canAct } = useActor();
   const { data: state, error } = useResource(useCallback(() => api.state(), []));
   const [log, setLog] = useState<TickResult[]>([]);
   const [busy, setBusy] = useState(false);
@@ -18,7 +18,7 @@ export default function SimulationPage() {
     setBusy(true);
     setTickError(null);
     try {
-      const result = await api.tick();
+      const result = await api.tick(actorKey!);
       setLog((prev) => [result, ...prev].slice(0, 6));
       refresh();
     } catch (err) {
@@ -49,7 +49,8 @@ export default function SimulationPage() {
         <button
           className="btn disabled:opacity-50"
           onClick={runTick}
-          disabled={busy}
+          disabled={busy || !canAct}
+          title={canAct ? undefined : "Advancing the world needs an agent API key."}
         >
           {busy ? "Ticking…" : "▶ Run Tick"}
         </button>

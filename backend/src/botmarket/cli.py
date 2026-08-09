@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from botmarket.config import get_settings
 from botmarket.db.session import Base, SessionLocal, engine, init_db
@@ -21,6 +22,21 @@ from botmarket.domain.errors import DomainError
 from botmarket.repositories import agents as agents_repo
 from botmarket.services import agents as agents_service
 from botmarket.services import simulation as simulation_service
+
+
+def _database_label() -> str:
+    """Return the database this command will act on, resolved to a real path.
+
+    The default ``DATABASE_URL`` is a *relative* SQLite path, so running the CLI
+    from a different directory quietly targets a different database. Printing
+    the resolved path turns that from a confusing no-op into an obvious one.
+    """
+    url = get_settings().database_url
+    prefix = "sqlite:///"
+    if url.startswith(prefix) and not url.startswith(f"{prefix}/"):
+        return f"{url}  ->  {Path(url[len(prefix):]).resolve()}"
+    return url
+
 
 STARTER_ROSTER: list[tuple[str, str]] = [
     ("trader", "Satoshi"),
@@ -43,6 +59,7 @@ def seed() -> int:
             agents_service.register(db, agent_type=agent_type, name=name)
             created += 1
     print(f"Seed complete. Created {created} new agent(s).")
+    print(f"Database: {_database_label()}")
     return 0
 
 
@@ -74,15 +91,15 @@ def state() -> int:
         )
         for i, row in enumerate(snapshot["leaderboard"][:5], start=1):
             print(f"  {i}. {row['name']:<12} net worth {row['net_worth']:>10.2f}")
+    print(f"Database: {_database_label()}")
     return 0
 
 
 def reset() -> int:
     """Drop and recreate every table."""
-    settings = get_settings()
     Base.metadata.drop_all(bind=engine)
     init_db()
-    print(f"Reset complete ({settings.database_url}).")
+    print(f"Reset complete. Database: {_database_label()}")
     return 0
 
 
