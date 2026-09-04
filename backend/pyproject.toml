@@ -18,7 +18,7 @@ dependencies = [
     "python-dotenv==1.0.1",
     # Encrypts venue API credentials at rest. Core, not optional: the
     # credential store refuses to persist a secret it cannot encrypt.
-    "cryptography==44.0.0",
+    "cryptography==50.0.0",
 ]
 
 [project.optional-dependencies]
