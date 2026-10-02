@@ -1,14 +1,19 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { use, useCallback, useState } from "react";
 import Link from "next/link";
 import { ActionForm, Empty, Field, Select, Stat } from "@/components/ui";
 import { useActor, useResource } from "@/lib/actor";
 import { api } from "@/lib/api";
 
 /** One agent: balances, holdings, standing, and the actions it can take. */
-export default function AgentPage({ params }: { params: { id: string } }) {
-  const agentId = Number(params.id);
+export default function AgentPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
+  const agentId = Number(id);
   const { agents, refresh, actorKey, canAct, actorId } = useActor();
 
   const { data, error, loading } = useResource(
