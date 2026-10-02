@@ -15,7 +15,7 @@ dependencies = [
     "pydantic==2.10.4",
     "pydantic-settings==2.7.1",
     "sqlalchemy==2.0.36",
-    "python-dotenv==1.0.1",
+    "python-dotenv==1.2.2",
     # Encrypts venue API credentials at rest. Core, not optional: the
     # credential store refuses to persist a secret it cannot encrypt.
     "cryptography==50.0.0",
